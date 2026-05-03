@@ -507,6 +507,9 @@ button:disabled {
 }
 
 .tab-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   background: rgba(255, 255, 255, 0.05);
   color: var(--muted);
   border: 1px solid rgba(255, 255, 255, 0.08);
@@ -516,6 +519,24 @@ button:disabled {
   background: rgba(118, 225, 255, 0.14);
   color: var(--text);
   border-color: rgba(118, 225, 255, 0.22);
+}
+
+.tab-button.has-alert:not(.is-active) {
+  border-color: rgba(255, 204, 125, 0.32);
+  color: var(--text);
+}
+
+.tab-alert {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: rgba(255, 204, 125, 0.18);
+  border: 1px solid rgba(255, 204, 125, 0.24);
+  color: var(--gold);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
 }
 
 .detail-panels {

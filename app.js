@@ -436,6 +436,7 @@ const PERMANENT_UPGRADE_CONFIG = [
 const dom = {
   combatStateChip: document.getElementById("combatStateChip"),
   haltStateChip: document.getElementById("haltStateChip"),
+  fullResetButton: document.getElementById("fullResetButton"),
   heroHpValue: document.getElementById("heroHpValue"),
   heroHpMeta: document.getElementById("heroHpMeta"),
   stageValue: document.getElementById("stageValue"),
@@ -465,6 +466,8 @@ const dom = {
   battleLog: document.getElementById("battleLog"),
   playerStats: document.getElementById("playerStats"),
   gunSlots: document.getElementById("gunSlots"),
+  loadoutTabButton: document.getElementById("loadoutTabButton"),
+  loadoutTabAlert: document.getElementById("loadoutTabAlert"),
   slotSummary: document.getElementById("slotSummary"),
   trophyUpgrades: document.getElementById("trophyUpgrades"),
   stoneUpgrades: document.getElementById("stoneUpgrades"),
@@ -503,6 +506,7 @@ function initialize() {
 
   dom.toggleHaltButton.addEventListener("click", toggleHaltMode);
   dom.reincarnateButton.addEventListener("click", reincarnate);
+  dom.fullResetButton.addEventListener("click", hardResetGame);
   dom.trophyUpgrades.addEventListener("pointerdown", handleUpgradeClick);
   dom.stoneUpgrades.addEventListener("pointerdown", handleUpgradeClick);
   dom.detailTabs.addEventListener("click", handleDetailTabClick);
@@ -857,7 +861,6 @@ function openPendingDropIfNeeded() {
   }
 
   state.activeDrop = state.pendingDrops.shift();
-  activeDetailTab = "loadout";
 }
 
 function rollGunDrop(stage) {
@@ -907,6 +910,25 @@ function reincarnate() {
     state,
     `환생 완료. 강화석 +${formatCompact(stonesEarned)} 정산 후 기본 권총 1정으로 재시작합니다.`
   );
+  saveGame(true);
+}
+
+function hardResetGame() {
+  const shouldReset = window.confirm(
+    "테스트용 전체 초기화를 진행할까요? 저장된 전투 진행, 강화, 드랍 대기열이 모두 초기화됩니다."
+  );
+  if (!shouldReset) {
+    return;
+  }
+
+  localStorage.removeItem(STORAGE_KEY);
+  state = createInitialState();
+  activeDetailTab = "combat";
+  hiddenStartedAt = null;
+  Object.keys(renderCache).forEach((key) => {
+    renderCache[key] = "";
+  });
+  render();
   saveGame(true);
 }
 
@@ -1156,14 +1178,15 @@ function applyOfflineProgress(elapsedMs) {
     return;
   }
 
-  const enemySnapshot = {
-    ...state.currentEnemy
-  };
+  const usePreviousEnemy =
+    state.currentEnemy.type === "miniboss" || state.currentEnemy.type === "boss";
+  const enemySnapshot = usePreviousEnemy
+    ? createEnemy(state.currentEnemy.stage, Math.max(1, state.currentEnemy.enemyNumber - 1))
+    : { ...state.currentEnemy };
   let damagePool = totalDps * (elapsedMs / 1000);
-  let currentHp = enemySnapshot.hp;
+  let currentHp = usePreviousEnemy ? enemySnapshot.maxHp : enemySnapshot.hp;
   let kills = 0;
   let totalReward = 0;
-  let dropCount = 0;
 
   while (damagePool >= currentHp && kills < MAX_OFFLINE_KILLS) {
     damagePool -= currentHp;
@@ -1172,29 +1195,27 @@ function applyOfflineProgress(elapsedMs) {
     state.player.kills[enemySnapshot.type] += 1;
     state.player.lifetimeKills[enemySnapshot.type] += 1;
 
-    if (enemySnapshot.type === "boss" && Math.random() < 0.2) {
-      queueGunDrop(enemySnapshot.stage);
-      dropCount += 1;
-    }
-
     currentHp = enemySnapshot.maxHp;
   }
 
   const compensatedReward = Math.floor(totalReward * OFFLINE_REWARD_RATE);
   state.player.trophies += compensatedReward;
-  state.currentEnemy.hp = clamp(Math.round(currentHp - damagePool), 1, state.currentEnemy.maxHp);
+  if (!usePreviousEnemy) {
+    state.currentEnemy.hp = clamp(Math.round(currentHp - damagePool), 1, state.currentEnemy.maxHp);
+  }
 
   state.offlineReport = {
     message:
       kills > 0
         ? `복귀 보상: ${formatCompact(kills)}회 처치, 전리품 ${formatCompact(compensatedReward)} 지급${
-            dropCount > 0 ? `, 보스 드랍 ${dropCount}건 확인` : ""
+            usePreviousEnemy ? " / 특수전은 실시간 전투만 반영" : ""
           }`
-        : "복귀 계산: 아직 마지막 적을 처치할 만큼의 누적 피해는 쌓이지 않았습니다."
+        : `복귀 계산: 아직 마지막 적을 처치할 만큼의 누적 피해는 쌓이지 않았습니다.${
+            usePreviousEnemy ? " 특수전은 실시간 전투만 반영됩니다." : ""
+          }`
   };
 
   addLog(state, state.offlineReport.message);
-  openPendingDropIfNeeded();
 }
 
 function render() {
@@ -1212,12 +1233,13 @@ function renderTopCards() {
   const maxHp = getMaxHp(state);
   const totalDps = getTotalExpectedDps();
   const pendingStones = getPendingStoneRewards(state);
+  const pendingDropCount = state.pendingDrops.length + (state.activeDrop ? 1 : 0);
 
-  dom.combatStateChip.textContent = state.activeDrop
-    ? "전투 중 / 드랍 대기"
-    : document.hidden
+  dom.combatStateChip.textContent = document.hidden
       ? "백그라운드 대기"
-      : "실시간 전투 중";
+      : pendingDropCount > 0
+        ? `실시간 전투 중 / 드랍 ${pendingDropCount}개 대기`
+        : "실시간 전투 중";
   dom.haltStateChip.textContent =
     state.player.haltedStage === null
       ? "스테이지 자동 진행"
@@ -1462,6 +1484,7 @@ function handleDetailTabClick(event) {
 
 function renderDetailTabs() {
   const tabButtons = dom.detailTabs.querySelectorAll("button[data-tab]");
+  const hasPendingDrops = Boolean(state.activeDrop) || state.pendingDrops.length > 0;
   tabButtons.forEach((button) => {
     button.classList.toggle("is-active", button.dataset.tab === activeDetailTab);
   });
@@ -1469,6 +1492,15 @@ function renderDetailTabs() {
   dom.detailPanels.forEach((panel) => {
     panel.classList.toggle("hidden", panel.dataset.panel !== activeDetailTab);
   });
+
+  dom.loadoutTabButton.classList.toggle(
+    "has-alert",
+    hasPendingDrops && activeDetailTab !== "loadout"
+  );
+  dom.loadoutTabAlert.classList.toggle(
+    "hidden",
+    !hasPendingDrops || activeDetailTab === "loadout"
+  );
 }
 
 function renderLoadoutWorkbench() {

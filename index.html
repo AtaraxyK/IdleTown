@@ -57,6 +57,7 @@
         <div class="toolbar-actions">
           <button id="toggleHaltButton" type="button" class="secondary-button">진행 멈춤 활성화</button>
           <button id="reincarnateButton" type="button" class="danger-button">환생</button>
+          <button id="fullResetButton" type="button" class="secondary-button">전체 초기화</button>
         </div>
       </div>
 
@@ -157,7 +158,10 @@
 
       <div id="detailTabs" class="detail-tabs" role="tablist" aria-label="전투 운영 패널">
         <button type="button" class="tab-button is-active" data-tab="combat">전투</button>
-        <button type="button" class="tab-button" data-tab="loadout">장착</button>
+        <button type="button" class="tab-button" data-tab="loadout" id="loadoutTabButton">
+          장착
+          <span id="loadoutTabAlert" class="tab-alert hidden">NEW</span>
+        </button>
         <button type="button" class="tab-button" data-tab="upgrades">강화</button>
       </div>
 

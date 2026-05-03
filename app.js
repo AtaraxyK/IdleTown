@@ -709,10 +709,6 @@ function gameLoop(now) {
 }
 
 function updateCombat(deltaSeconds) {
-  if (state.activeDrop) {
-    return;
-  }
-
   syncEquipment(state);
 
   for (let slotIndex = 0; slotIndex < state.player.equippedGunIds.length; slotIndex += 1) {
@@ -727,15 +723,11 @@ function updateCombat(deltaSeconds) {
     while (state.gunCooldowns[slotIndex] <= 0) {
       fireGun(slotIndex, effectiveStats);
       state.gunCooldowns[slotIndex] += effectiveStats.attackIntervalSeconds;
-
-      if (state.activeDrop) {
-        break;
-      }
     }
   }
 
   state.enemyAttackCooldown -= deltaSeconds;
-  while (state.enemyAttackCooldown <= 0 && !state.activeDrop) {
+  while (state.enemyAttackCooldown <= 0) {
     state.enemyAttackCooldown += 1;
     enemyAttack();
   }
@@ -1155,7 +1147,7 @@ function handleVisibilityChange() {
 }
 
 function applyOfflineProgress(elapsedMs) {
-  if (elapsedMs < 1000 || state.activeDrop) {
+  if (elapsedMs < 1000) {
     return;
   }
 
@@ -1222,7 +1214,7 @@ function renderTopCards() {
   const pendingStones = getPendingStoneRewards(state);
 
   dom.combatStateChip.textContent = state.activeDrop
-    ? "드랍 선택 대기"
+    ? "전투 중 / 드랍 대기"
     : document.hidden
       ? "백그라운드 대기"
       : "실시간 전투 중";

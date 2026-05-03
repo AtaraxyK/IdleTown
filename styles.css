@@ -641,6 +641,7 @@ button:disabled {
 .inline-actions {
   display: flex;
   justify-content: flex-end;
+  gap: 10px;
 }
 
 .log-list {

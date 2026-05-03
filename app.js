@@ -671,6 +671,7 @@ const dom = {
   detailPanels: Array.from(document.querySelectorAll(".detail-panel")),
   dropGunCard: document.getElementById("dropGunCard"),
   dropChoices: document.getElementById("dropChoices"),
+  recommendedDropButton: document.getElementById("recommendedDropButton"),
   discardDropButton: document.getElementById("discardDropButton"),
   forgeRelicButton: document.getElementById("forgeRelicButton"),
   relicForgeStatus: document.getElementById("relicForgeStatus"),
@@ -709,6 +710,7 @@ function initialize() {
   dom.stoneUpgrades.addEventListener("pointerdown", handleUpgradeClick);
   dom.detailTabs.addEventListener("click", handleDetailTabClick);
   dom.dropChoices.addEventListener("pointerdown", handleDropChoice);
+  dom.recommendedDropButton?.addEventListener("click", equipRecommendedDrop);
   dom.discardDropButton.addEventListener("pointerdown", discardActiveDrop);
   dom.forgeRelicButton?.addEventListener("click", forgeRelic);
   if (dom.discardDropButton) {
@@ -1119,7 +1121,8 @@ function reincarnate() {
   const stonesEarned = getPendingStoneRewards(state);
   const permanentStones = state.player.stones + stonesEarned;
   const permanentUpgrades = { ...state.player.permanentUpgrades };
-  const gunShards = state.player.gunShards;
+  const dismantledShardGain = getEquippedGunShardTotal(state, false);
+  const gunShards = state.player.gunShards + dismantledShardGain;
   const relics = { ...state.player.relics };
 
   state = createInitialState();
@@ -1129,10 +1132,17 @@ function reincarnate() {
   state.player.relics = relics;
   state.player.hp = getMaxHp(state);
   state.currentEnemy = createEnemy(1, 1);
+  const reincarnateLogText =
+    dismantledShardGain > 0
+      ? `환생 완료. 강화석 +${formatCompact(stonesEarned)} 정산, 장착 총기 해체로 총기 조각 +${formatCompact(dismantledShardGain)} 후 기본 권총 1정으로 재시작합니다.`
+      : `환생 완료. 강화석 +${formatCompact(stonesEarned)} 정산 후 기본 권총 1정으로 재시작합니다.`;
   addLog(
     state,
     `환생 완료. 강화석 +${formatCompact(stonesEarned)} 정산 후 기본 권총 1정으로 재시작합니다.`
   );
+  if (state.logs[0]) {
+    state.logs[0].text = reincarnateLogText;
+  }
   saveGame(true);
 }
 
@@ -1444,6 +1454,55 @@ function getMaxAffordableUpgradePurchase(config, startingLevel, budget) {
   return { levels, totalCost };
 }
 
+function getRecommendedSlotForGun(gunRef) {
+  const candidateStats = getEffectiveGunStats(gunRef);
+  if (!candidateStats || state.player.equippedGunIds.length === 0) {
+    return null;
+  }
+
+  let bestSlotIndex = 0;
+  let bestDelta = Number.NEGATIVE_INFINITY;
+
+  for (let slotIndex = 0; slotIndex < state.player.equippedGunIds.length; slotIndex += 1) {
+    const equippedGun = state.player.equippedGunIds[slotIndex];
+    const equippedStats = equippedGun ? getEffectiveGunStats(equippedGun) : null;
+    const delta = equippedStats ? candidateStats.dps - equippedStats.dps : candidateStats.dps;
+
+    if (delta > bestDelta) {
+      bestDelta = delta;
+      bestSlotIndex = slotIndex;
+    }
+  }
+
+  return {
+    slotIndex: bestSlotIndex,
+    delta: bestDelta
+  };
+}
+
+function equipActiveDropToSlot(slotIndex) {
+  if (!state.activeDrop || !Number.isInteger(slotIndex) || slotIndex < 0 || slotIndex >= state.player.equippedGunIds.length) {
+    return false;
+  }
+
+  const droppedGun = createGunInstance(state.activeDrop.gunId, state.activeDrop.tier ?? 0);
+  const replacedGun = state.player.equippedGunIds[slotIndex];
+
+  state.player.equippedGunIds[slotIndex] = droppedGun;
+  state.gunCooldowns[slotIndex] = 0;
+  addLog(
+    state,
+    replacedGun
+      ? `${getGunLogLabel(droppedGun)}를 슬롯 ${slotIndex + 1}에 장착하고 ${getGunLogLabel(replacedGun)}를 폐기했습니다.`
+      : `${getGunLogLabel(droppedGun)}를 빈 슬롯 ${slotIndex + 1}에 장착했습니다.`
+  );
+
+  state.activeDrop = null;
+  openPendingDropIfNeeded();
+  saveGame(true);
+  return true;
+}
+
 function handleDropChoice(event) {
   const button = event.target.closest("button[data-slot-index]");
   if (!button || !state.activeDrop) {
@@ -1453,6 +1512,8 @@ function handleDropChoice(event) {
   event.preventDefault();
 
   const slotIndex = Number(button.dataset.slotIndex);
+  equipActiveDropToSlot(slotIndex);
+  return;
   const droppedGun = createGunInstance(state.activeDrop.gunId, state.activeDrop.tier ?? 0);
   const gunId = droppedGun.gunId;
   const replaced = state.player.equippedGunIds[slotIndex]?.gunId ?? state.player.equippedGunIds[slotIndex];
@@ -1469,6 +1530,23 @@ function handleDropChoice(event) {
   state.activeDrop = null;
   openPendingDropIfNeeded();
   saveGame(true);
+}
+
+function equipRecommendedDrop(event) {
+  if (!state.activeDrop) {
+    return;
+  }
+
+  if (event?.preventDefault) {
+    event.preventDefault();
+  }
+
+  const recommendation = getRecommendedSlotForGun(state.activeDrop);
+  if (!recommendation) {
+    return;
+  }
+
+  equipActiveDropToSlot(recommendation.slotIndex);
 }
 
 function discardActiveDrop(event) {
@@ -2019,6 +2097,10 @@ function renderLoadoutWorkbench() {
     dom.dropChoices.classList.add("hidden");
     dom.dropActionBar.classList.add("hidden");
     dom.dropGunCard.style.cssText = "";
+    if (dom.recommendedDropButton) {
+      dom.recommendedDropButton.disabled = true;
+      dom.recommendedDropButton.textContent = "추천 슬롯에 장착";
+    }
 
     if (renderCache.dropWorkbench !== emptyKey) {
       renderCache.dropWorkbench = emptyKey;
@@ -2031,12 +2113,21 @@ function renderLoadoutWorkbench() {
   const gun = GUN_BY_ID[state.activeDrop.gunId];
   const stats = getEffectiveGunStats(state.activeDrop);
   const renderKey = `${getGunInstanceSignature(state.activeDrop)}|${state.activeDrop.stage}|${getLoadoutSignature(state.player.equippedGunIds)}|${queuedCount}`;
+  const recommendation = getRecommendedSlotForGun(state.activeDrop);
+  const hasPositiveRecommendation = Boolean(recommendation && recommendation.delta > 0);
   dom.dropQueueCount.textContent = `대기 ${queuedCount}개`;
   dom.dropEmptyState.classList.add("hidden");
   dom.dropGunCard.classList.remove("hidden");
   dom.dropChoices.classList.remove("hidden");
   dom.dropActionBar.classList.remove("hidden");
   dom.dropGunCard.style.cssText = getRarityCardStyle(state.activeDrop.tier ?? 0);
+
+  if (dom.recommendedDropButton) {
+    dom.recommendedDropButton.disabled = !recommendation;
+    dom.recommendedDropButton.textContent = recommendation
+      ? `추천 슬롯 ${recommendation.slotIndex + 1}번에 장착`
+      : "추천 슬롯에 장착";
+  }
 
   if (renderCache.dropWorkbench === renderKey) {
     return;
@@ -2064,21 +2155,13 @@ function renderLoadoutWorkbench() {
     <div class="stat-line"><span>기대 DPS</span><strong>${formatCompact(stats.dps)}</strong></div>
   `;
 
-  const bestPositiveDelta = Math.max(
-    0,
-    ...state.player.equippedGunIds.map((equippedGun) => {
-      const equippedStats = equippedGun ? getEffectiveGunStats(equippedGun) : null;
-      return equippedStats ? stats.dps - equippedStats.dps : stats.dps;
-    })
-  );
-
   dom.dropChoices.innerHTML = state.player.equippedGunIds
     .map((equippedGun, index) => {
       const gunId = equippedGun?.gunId ?? null;
       const equippedStats = equippedGun ? getEffectiveGunStats(equippedGun) : null;
       const delta = equippedStats ? stats.dps - equippedStats.dps : stats.dps;
       const deltaClass = delta >= 0 ? "good" : "bad";
-      const isRecommended = bestPositiveDelta > 0 && Math.abs(delta - bestPositiveDelta) < 0.0001;
+      const isRecommended = hasPositiveRecommendation && recommendation.slotIndex === index;
 
       return `
         <article class="drop-choice ${isRecommended ? "recommended" : ""}">
@@ -2179,6 +2262,21 @@ function getBossDropChance(gameState) {
 function getGunShardYield(gunRef) {
   const gun = normalizeGunInstance(gunRef);
   return gun ? 1 + gun.tier : 0;
+}
+
+function getEquippedGunShardTotal(gameState, includeStarter = false) {
+  return gameState.player.equippedGunIds.reduce((sum, gunRef) => {
+    const gun = normalizeGunInstance(gunRef);
+    if (!gun) {
+      return sum;
+    }
+
+    if (!includeStarter && gun.gunId === "basic-pistol") {
+      return sum;
+    }
+
+    return sum + getGunShardYield(gun);
+  }, 0);
 }
 
 function grantGunShardsFromGun(gunRef) {

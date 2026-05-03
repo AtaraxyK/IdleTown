@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Idle Town Combat Prototype</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="background-layer" aria-hidden="true"></div>
+
+  <main class="game-shell">
+    <header class="hud-strip panel">
+      <section class="brand-panel">
+        <p class="eyebrow">Idle Town Combat</p>
+        <h1>전투 화면</h1>
+        <p class="muted">
+          적, 체력, 진행 상태가 먼저 보이고 강화와 장비는 아래에서 관리하는 전투 중심 레이아웃입니다.
+        </p>
+      </section>
+
+      <section class="hud-resources">
+        <article class="hud-card">
+          <span>플레이어 HP</span>
+          <strong id="heroHpValue">0 / 0</strong>
+          <small id="heroHpMeta">기본 생존력</small>
+        </article>
+        <article class="hud-card">
+          <span>현재 스테이지</span>
+          <strong id="stageValue">1 - 1 / 10</strong>
+          <small>실시간 진행 기준</small>
+        </article>
+        <article class="hud-card">
+          <span>몬스터 전리품</span>
+          <strong id="trophyValue">0</strong>
+          <small>이번 생존 한정</small>
+        </article>
+        <article class="hud-card">
+          <span>강화석</span>
+          <strong id="stoneValue">0</strong>
+          <small>환생 후에도 유지</small>
+        </article>
+        <article class="hud-card emphasis">
+          <span>총 기대 DPS</span>
+          <strong id="dpsValue">0 DPS</strong>
+          <small>장착 총기 합산</small>
+        </article>
+      </section>
+    </header>
+
+    <section class="battle-stage panel">
+      <div class="stage-toolbar">
+        <div class="toolbar-status">
+          <span class="chip" id="combatStateChip">실시간 전투 중</span>
+          <span class="chip subtle" id="haltStateChip">스테이지 자동 진행</span>
+        </div>
+        <div class="toolbar-actions">
+          <button id="toggleHaltButton" type="button" class="secondary-button">진행 멈춤 활성화</button>
+          <button id="reincarnateButton" type="button" class="danger-button">환생</button>
+        </div>
+      </div>
+
+      <div class="stage-main">
+        <section class="portrait-column">
+          <div class="enemy-portrait" id="enemyPortrait" data-enemy-type="normal">
+            <div class="enemy-stage-stamp" id="arenaStageValue">STAGE 1 - 1 / 10</div>
+            <div class="enemy-portrait-ring ring-outer"></div>
+            <div class="enemy-portrait-ring ring-inner"></div>
+            <div class="enemy-portrait-core"></div>
+            <div class="enemy-glyph" id="enemyGlyph">TARGET</div>
+          </div>
+        </section>
+
+        <section class="encounter-column">
+          <div class="encounter-heading">
+            <p class="eyebrow">Current Encounter</p>
+            <div class="encounter-title-row">
+              <h2 id="enemyName">적 로딩 중</h2>
+              <span id="enemyTag" class="encounter-badge">일반 적</span>
+            </div>
+            <p id="enemyFlavor" class="muted">적 정보를 계산 중입니다.</p>
+          </div>
+
+          <div class="health-stack">
+            <div class="health-panel">
+              <div class="bar-label">
+                <span>플레이어</span>
+                <span id="playerHpLabel">0 / 0</span>
+              </div>
+              <div class="bar-track">
+                <div id="playerHpBar" class="bar-fill player-fill"></div>
+              </div>
+            </div>
+
+            <div class="health-panel">
+              <div class="bar-label">
+                <span>적</span>
+                <span id="enemyHpLabel">0 / 0</span>
+              </div>
+              <div class="bar-track enemy-track">
+                <div id="enemyHpBar" class="bar-fill enemy-fill"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="arena-summary">
+            <article class="summary-card">
+              <span>적 공격력</span>
+              <strong id="enemyAttackValue">0</strong>
+            </article>
+            <article class="summary-card">
+              <span>예상 처치 시간</span>
+              <strong id="timeToKillValue">0.0초</strong>
+            </article>
+            <article class="summary-card">
+              <span>처치 보상</span>
+              <strong id="trophyRewardValue">0 전리품</strong>
+            </article>
+            <article class="summary-card">
+              <span>보스 드랍 확률</span>
+              <strong id="dropChanceValue">-</strong>
+            </article>
+          </div>
+
+          <div class="stage-messages">
+            <div id="offlineReport" class="notice hidden" aria-live="polite"></div>
+            <div class="event-banner">
+              <span>최근 이벤트</span>
+              <strong id="latestEvent">전투 준비 완료</strong>
+            </div>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <section class="control-deck panel">
+      <div class="deck-header">
+        <div>
+          <p class="eyebrow">Combat Deck</p>
+          <h2>장착과 강화</h2>
+        </div>
+        <div class="deck-meta">
+          <article class="mini-meta">
+            <span>슬롯</span>
+            <strong id="slotSummary">1 슬롯</strong>
+          </article>
+          <article class="mini-meta">
+            <span>전투 요약</span>
+            <strong id="runSummary">총기 1정 장착</strong>
+          </article>
+          <article class="mini-meta">
+            <span>환생 정산</span>
+            <strong id="stoneForecast">환생 시 +0 예상</strong>
+          </article>
+        </div>
+      </div>
+
+      <div id="detailTabs" class="detail-tabs" role="tablist" aria-label="전투 상세 패널">
+        <button type="button" class="tab-button is-active" data-tab="loadout">장착 총기</button>
+        <button type="button" class="tab-button" data-tab="trophies">기본 강화</button>
+        <button type="button" class="tab-button" data-tab="stones">영구 강화</button>
+        <button type="button" class="tab-button" data-tab="logs">이벤트 로그</button>
+      </div>
+
+      <div class="detail-panels">
+        <section class="detail-panel" data-panel="loadout">
+          <div id="playerStats" class="stat-grid combat-stat-grid"></div>
+          <div class="subpanel">
+            <div class="subpanel-head">
+              <h3>장착 총기</h3>
+              <span class="muted">보스 드랍 무기 즉시 교체</span>
+            </div>
+            <div id="gunSlots" class="gun-slot-list"></div>
+          </div>
+        </section>
+
+        <section class="detail-panel hidden" data-panel="trophies">
+          <div class="subpanel">
+            <div class="subpanel-head">
+              <h3>기본 강화</h3>
+              <span class="muted">몬스터 전리품 사용</span>
+            </div>
+            <div id="trophyUpgrades" class="upgrade-list"></div>
+          </div>
+        </section>
+
+        <section class="detail-panel hidden" data-panel="stones">
+          <div class="subpanel">
+            <div class="subpanel-head">
+              <h3>영구 강화</h3>
+              <span class="muted">강화석 사용</span>
+            </div>
+            <div id="stoneUpgrades" class="upgrade-list"></div>
+          </div>
+        </section>
+
+        <section class="detail-panel hidden" data-panel="logs">
+          <div class="subpanel">
+            <div class="subpanel-head">
+              <h3>이벤트 로그</h3>
+              <span class="muted">중요 전투 이벤트만 기록</span>
+            </div>
+            <div id="battleLog" class="log-list"></div>
+          </div>
+        </section>
+      </div>
+    </section>
+  </main>
+
+  <div id="dropModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="dropTitle">
+    <div class="modal-card panel">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">Boss Drop</p>
+          <h2 id="dropTitle">새 총기 획득</h2>
+          <p id="dropSubtitle" class="muted">장착할 슬롯을 선택하거나 버릴 수 있습니다.</p>
+        </div>
+      </div>
+
+      <div id="dropGunCard" class="drop-gun-card"></div>
+      <div id="dropChoices" class="drop-choice-list"></div>
+      <div class="modal-actions">
+        <button id="discardDropButton" type="button" class="secondary-button">버리기</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

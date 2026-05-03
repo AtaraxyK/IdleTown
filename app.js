@@ -527,6 +527,7 @@ function createInitialState() {
     version: STATE_VERSION,
     player: {
       stage: 1,
+      maxStageReached: 1,
       enemyNumber: 1,
       hp: 100,
       trophies: 0,
@@ -605,6 +606,11 @@ function normalizeState(source) {
     player: {
       ...defaults.player,
       ...source.player,
+      maxStageReached: Math.max(
+        source.player?.maxStageReached ?? 1,
+        source.player?.stage ?? 1,
+        1
+      ),
       tempUpgrades: {
         ...defaults.player.tempUpgrades,
         ...source.player?.tempUpgrades,
@@ -785,6 +791,7 @@ function handleEnemyDefeat() {
     const wasLocked = state.player.haltedStage !== null;
 
     state.player.stage = nextStage;
+    state.player.maxStageReached = Math.max(state.player.maxStageReached, state.player.stage);
     state.player.enemyNumber = 1;
     if (shouldRestoreHp) {
       state.player.hp = getMaxHp(state);
@@ -933,11 +940,12 @@ function hardResetGame() {
 }
 
 function getPendingStoneRewards(gameState) {
-  return (
-    Math.floor(gameState.player.kills.normal / 5) +
-    gameState.player.kills.miniboss +
-    gameState.player.kills.boss * 3
-  );
+  const clearedStages = Math.max(0, gameState.player.maxStageReached - 1);
+  const normalKills = clearedStages * 8;
+  const minibossKills = clearedStages;
+  const bossKills = clearedStages;
+
+  return Math.floor(normalKills / 5) + minibossKills + bossKills * 2;
 }
 
 function getMaxHp(gameState) {
@@ -1300,8 +1308,6 @@ function renderArena() {
 
 function renderStats() {
   const pendingStones = getPendingStoneRewards(state);
-  const runKills =
-    state.player.kills.normal + state.player.kills.miniboss + state.player.kills.boss;
   const lifetimeKills =
     state.player.lifetimeKills.normal +
     state.player.lifetimeKills.miniboss +
@@ -1309,7 +1315,7 @@ function renderStats() {
   const statRows = [
     { label: "최대 HP", value: formatCompact(getMaxHp(state)) },
     { label: "총 기대 DPS", value: `${formatCompact(getTotalExpectedDps())}` },
-    { label: "이번 생존 처치", value: formatCompact(runKills) },
+    { label: "최고 도달 스테이지", value: `${state.player.maxStageReached}` },
     { label: "누적 처치", value: formatCompact(lifetimeKills) },
     { label: "예상 강화석", value: `+${formatCompact(pendingStones)}` },
     { label: "총 슬롯", value: `${getSlotCount(state)}` }

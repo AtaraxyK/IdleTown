@@ -472,6 +472,75 @@ const GUN_RARITY_BY_TIER = Object.fromEntries(
   GUN_RARITY_TIERS.map((rarity) => [rarity.tier, rarity])
 );
 
+const RELIC_CATALOG = [
+  {
+    id: "book-of-shadows",
+    name: "그림자 서고",
+    category: "환생",
+    description: "환생 시 획득하는 강화석을 늘려 주는 검은 기록서.",
+    effectKey: "stoneGainMultiplier",
+    effectValue: 0.08
+  },
+  {
+    id: "crown-of-greed",
+    name: "탐욕의 왕관",
+    category: "전리품",
+    description: "몬스터 전리품 획득량을 끌어올리는 금빛 왕관.",
+    effectKey: "trophyGainMultiplier",
+    effectValue: 0.06
+  },
+  {
+    id: "powder-chalice",
+    name: "화약 성배",
+    category: "화력",
+    description: "모든 총기의 기본 위력을 끌어올리는 전장의 성배.",
+    effectKey: "gunDamageMultiplier",
+    effectValue: 0.05
+  },
+  {
+    id: "chronos-gear",
+    name: "크로노스 기어",
+    category: "속사",
+    description: "사격 템포를 압축해 공격 속도를 끌어올리는 시계장치.",
+    effectKey: "attackSpeedReduction",
+    effectValue: 0.012
+  },
+  {
+    id: "deadeye-monocle",
+    name: "데드아이 단안경",
+    category: "치명",
+    description: "치명타 발생 확률을 높여 주는 사수의 단안경.",
+    effectKey: "critChanceFlat",
+    effectValue: 45
+  },
+  {
+    id: "execution-rune",
+    name: "집행자 룬",
+    category: "치명",
+    description: "치명타 위력을 강화하는 붉은 각인의 파편.",
+    effectKey: "critDamageFlat",
+    effectValue: 5
+  },
+  {
+    id: "titan-plate",
+    name: "타이탄 장갑판",
+    category: "생존",
+    description: "최대 HP를 높여 주는 거대 장갑의 심재.",
+    effectKey: "hpMultiplier",
+    effectValue: 0.06
+  },
+  {
+    id: "treasure-beacon",
+    name: "보물 봉화",
+    category: "보스",
+    description: "보스 무기 드랍 확률을 올려 주는 유도 등대.",
+    effectKey: "bossDropChanceFlat",
+    effectValue: 0.015
+  }
+];
+
+const RELIC_BY_ID = Object.fromEntries(RELIC_CATALOG.map((relic) => [relic.id, relic]));
+
 const TEMP_UPGRADE_CONFIG = [
   {
     key: "hp",
@@ -543,6 +612,12 @@ const PERMANENT_UPGRADE_CONFIG = [
     getCost: (level) => Math.round(5 + 5 * Math.pow(1.6, level))
   },
   {
+    key: "trophyGain",
+    label: "몬스터 전리품 획득량 증가",
+    description: "모든 몬스터 전리품 획득량 +5%",
+    getCost: (level) => Math.round(6 + 6 * Math.pow(1.58, level))
+  },
+  {
     key: "slots",
     label: "총기 슬롯 추가",
     description: "영구 장착 슬롯 +1",
@@ -560,6 +635,7 @@ const dom = {
   enemyTag: document.getElementById("enemyTag"),
   trophyValue: document.getElementById("trophyValue"),
   stoneValue: document.getElementById("stoneValue"),
+  shardValue: document.getElementById("shardValue"),
   stoneForecast: document.getElementById("stoneForecast"),
   dpsValue: document.getElementById("dpsValue"),
   runSummary: document.getElementById("runSummary"),
@@ -595,7 +671,11 @@ const dom = {
   detailPanels: Array.from(document.querySelectorAll(".detail-panel")),
   dropGunCard: document.getElementById("dropGunCard"),
   dropChoices: document.getElementById("dropChoices"),
-  discardDropButton: document.getElementById("discardDropButton")
+  discardDropButton: document.getElementById("discardDropButton"),
+  forgeRelicButton: document.getElementById("forgeRelicButton"),
+  relicForgeStatus: document.getElementById("relicForgeStatus"),
+  relicCollectionSummary: document.getElementById("relicCollectionSummary"),
+  relicList: document.getElementById("relicList")
 };
 
 let state = loadState();
@@ -609,7 +689,8 @@ const renderCache = {
   tempUpgrades: "",
   stoneUpgrades: "",
   logs: "",
-  dropWorkbench: ""
+  dropWorkbench: "",
+  relics: ""
 };
 
 initialize();
@@ -629,6 +710,10 @@ function initialize() {
   dom.detailTabs.addEventListener("click", handleDetailTabClick);
   dom.dropChoices.addEventListener("pointerdown", handleDropChoice);
   dom.discardDropButton.addEventListener("pointerdown", discardActiveDrop);
+  dom.forgeRelicButton?.addEventListener("click", forgeRelic);
+  if (dom.discardDropButton) {
+    dom.discardDropButton.textContent = "해체하기";
+  }
 
   document.addEventListener("visibilitychange", handleVisibilityChange);
   window.addEventListener("beforeunload", () => saveGame(true));
@@ -649,6 +734,7 @@ function createInitialState() {
       hp: 100,
       trophies: 0,
       stones: 0,
+      gunShards: 0,
       haltedStage: null,
       tempUpgrades: {
         hp: 0,
@@ -664,6 +750,7 @@ function createInitialState() {
         critChance: 0,
         critDamage: 0,
         attackSpeed: 0,
+        trophyGain: 0,
         slots: 0
       },
       kills: {
@@ -676,6 +763,7 @@ function createInitialState() {
         miniboss: 0,
         boss: 0
       },
+      relics: {},
       equippedGunIds: [createGunInstance("basic-pistol", 0)]
     },
     currentEnemy: null,
@@ -745,6 +833,8 @@ function normalizeState(source) {
         ...defaults.player.lifetimeKills,
         ...source.player?.lifetimeKills
       },
+      gunShards: Math.max(0, Math.round(Number(source.player?.gunShards) || 0)),
+      relics: normalizeRelicCollection(source.player?.relics),
       equippedGunIds: Array.isArray(source.player?.equippedGunIds)
         ? source.player.equippedGunIds
             .map((gunEntry) => (gunEntry === null ? null : normalizeGunInstance(gunEntry)))
@@ -896,14 +986,14 @@ function enemyAttack() {
 function handleEnemyDefeat() {
   const defeatedEnemy = state.currentEnemy;
   const shouldRestoreHp = defeatedEnemy.enemyNumber === 5 || defeatedEnemy.enemyNumber === 10;
-  grantKillRewards(defeatedEnemy, 1, 1);
+  const rewardEarned = grantKillRewards(defeatedEnemy, 1, 1);
 
   addLog(
     state,
-    `${defeatedEnemy.name} 격파. 전리품 +${formatCompact(defeatedEnemy.trophyReward)}`
+    `${defeatedEnemy.name} 격파. 전리품 +${formatCompact(rewardEarned)}`
   );
 
-  if (defeatedEnemy.type === "boss" && Math.random() < 0.2) {
+  if (defeatedEnemy.type === "boss" && Math.random() < getBossDropChance(state)) {
     queueGunDrop(defeatedEnemy.stage);
   }
 
@@ -961,10 +1051,13 @@ function handlePlayerDefeat() {
 }
 
 function grantKillRewards(enemy, count, rewardRate) {
-  const totalReward = Math.floor(enemy.trophyReward * count * rewardRate);
+  const totalReward = Math.floor(
+    enemy.trophyReward * count * rewardRate * getTrophyRewardMultiplier(state)
+  );
   state.player.trophies += totalReward;
   state.player.kills[enemy.type] += count;
   state.player.lifetimeKills[enemy.type] += count;
+  return totalReward;
 }
 
 function queueGunDrop(stage) {
@@ -1026,10 +1119,14 @@ function reincarnate() {
   const stonesEarned = getPendingStoneRewards(state);
   const permanentStones = state.player.stones + stonesEarned;
   const permanentUpgrades = { ...state.player.permanentUpgrades };
+  const gunShards = state.player.gunShards;
+  const relics = { ...state.player.relics };
 
   state = createInitialState();
   state.player.stones = permanentStones;
   state.player.permanentUpgrades = permanentUpgrades;
+  state.player.gunShards = gunShards;
+  state.player.relics = relics;
   state.player.hp = getMaxHp(state);
   state.currentEnemy = createEnemy(1, 1);
   addLog(
@@ -1063,15 +1160,17 @@ function getPendingStoneRewards(gameState) {
   const normalKills = clearedStages * 8;
   const minibossKills = clearedStages;
   const bossKills = clearedStages;
+  const baseStoneReward = Math.floor(normalKills / 5) + minibossKills + bossKills * 2;
 
-  return Math.floor(normalKills / 5) + minibossKills + bossKills * 2;
+  return Math.max(0, Math.floor(baseStoneReward * getStoneRewardMultiplier(gameState)));
 }
 
 function getMaxHp(gameState) {
   const hpMultiplier =
     1 +
     gameState.player.tempUpgrades.hp * 0.08 +
-    gameState.player.permanentUpgrades.hp * 0.05;
+    gameState.player.permanentUpgrades.hp * 0.05 +
+    getRelicEffectTotal(gameState, "hpMultiplier");
   return Math.max(1, Math.round(100 * hpMultiplier));
 }
 
@@ -1089,18 +1188,23 @@ function getEffectiveGunStats(gunRef) {
   const rarityMeta = getGunRarityMeta(gunInstance.tier);
   const rarityMultiplier = getGunRarityMultiplier(gunInstance.tier);
   const tempGunBonus = state.player.tempUpgrades.gunDamage * 0.04;
-  const permanentDamageBonus = state.player.permanentUpgrades.gunDamage * 0.025;
+  const permanentDamageBonus =
+    state.player.permanentUpgrades.gunDamage * 0.025 +
+    getRelicEffectTotal(state, "gunDamageMultiplier");
   const critChanceBonus =
     state.player.tempUpgrades.critChance * 70 +
-    state.player.permanentUpgrades.critChance * 40;
+    state.player.permanentUpgrades.critChance * 40 +
+    getRelicEffectTotal(state, "critChanceFlat");
   const critDamageBonus =
     state.player.tempUpgrades.critDamage * 4 +
-    state.player.permanentUpgrades.critDamage * 2.5;
+    state.player.permanentUpgrades.critDamage * 2.5 +
+    getRelicEffectTotal(state, "critDamageFlat");
   const attackSpeedFactor = Math.max(
     0.55,
     1 -
       state.player.tempUpgrades.attackSpeed * 0.008 -
-      state.player.permanentUpgrades.attackSpeed * 0.004
+      state.player.permanentUpgrades.attackSpeed * 0.004 -
+      getRelicEffectTotal(state, "attackSpeedReduction")
   );
   const baseDamage = gun.damage * rarityMultiplier;
   const baseCritChance = gun.critChance * rarityMultiplier;
@@ -1376,7 +1480,12 @@ function discardActiveDrop(event) {
     event.preventDefault();
   }
 
-  addLog(state, `${GUN_BY_ID[state.activeDrop.gunId].name}를 버렸습니다.`);
+  const dismantledGun = state.activeDrop;
+  const shardGain = grantGunShardsFromGun(dismantledGun);
+  addLog(
+    state,
+    `${getGunLogLabel(dismantledGun)}를 해체해 총기 조각 ${formatCompact(shardGain)}개를 획득했습니다.`
+  );
   state.activeDrop = null;
   openPendingDropIfNeeded();
   saveGame(true);
@@ -1426,7 +1535,9 @@ function applyOfflineProgress(elapsedMs) {
     currentHp = enemySnapshot.maxHp;
   }
 
-  const compensatedReward = Math.floor(totalReward * OFFLINE_REWARD_RATE);
+  const compensatedReward = Math.floor(
+    totalReward * OFFLINE_REWARD_RATE * getTrophyRewardMultiplier(state)
+  );
   state.player.trophies += compensatedReward;
   if (!usePreviousEnemy) {
     state.currentEnemy.hp = clamp(Math.round(currentHp - damagePool), 1, state.currentEnemy.maxHp);
@@ -1452,6 +1563,7 @@ function render() {
   renderStats();
   renderGunSlots();
   renderUpgradePanels();
+  renderRelicPanel();
   renderLogs();
   renderDetailTabs();
   renderLoadoutWorkbench();
@@ -1481,13 +1593,10 @@ function renderTopCards() {
   dom.stageValue.textContent = `${state.player.stage} - ${state.player.enemyNumber} / 10`;
   dom.trophyValue.textContent = formatCompact(state.player.trophies);
   dom.stoneValue.textContent = formatCompact(state.player.stones);
+  dom.shardValue.textContent = formatCompact(state.player.gunShards);
   dom.stoneForecast.textContent = `환생 시 +${formatCompact(pendingStones)} 예상`;
   dom.dpsValue.textContent = `${formatCompact(totalDps)} DPS`;
-  dom.runSummary.textContent = `총기 ${state.player.equippedGunIds.filter(Boolean).length}정 / 누적 처치 ${formatCompact(
-    state.player.lifetimeKills.normal +
-      state.player.lifetimeKills.miniboss +
-      state.player.lifetimeKills.boss
-  )}`;
+  dom.runSummary.textContent = `총기 ${state.player.equippedGunIds.filter(Boolean).length}정 / 유물 ${getDiscoveredRelicCount(state)}종`;
 }
 
 function renderArena() {
@@ -1516,7 +1625,8 @@ function renderArena() {
     ? `${expectedKillTime.toFixed(1)}초`
     : "계산 불가";
   dom.trophyRewardValue.textContent = `${formatCompact(enemy.trophyReward)} 전리품`;
-  dom.dropChanceValue.textContent = enemy.type === "boss" ? "20%" : "-";
+  dom.dropChanceValue.textContent =
+    enemy.type === "boss" ? formatRatePercent(getBossDropChance(state)) : "-";
 
   if (state.offlineReport?.message) {
     dom.offlineReport.textContent = state.offlineReport.message;
@@ -1538,7 +1648,9 @@ function renderStats() {
     { label: "최고 도달 스테이지", value: `${state.player.maxStageReached}` },
     { label: "누적 처치", value: formatCompact(lifetimeKills) },
     { label: "예상 강화석", value: `+${formatCompact(pendingStones)}` },
-    { label: "총 슬롯", value: `${getSlotCount(state)}` }
+    { label: "총 슬롯", value: `${getSlotCount(state)}` },
+    { label: "총기 조각", value: formatCompact(state.player.gunShards) },
+    { label: "유물 수집", value: `${getDiscoveredRelicCount(state)}종 / Lv.${formatCompact(getTotalRelicLevels(state))}` }
   ];
   const markup = statRows
     .map(
@@ -1779,6 +1891,64 @@ function buildUpgradeCardMarkup({ config, level, currency, wallet, unitLabel }) 
   `;
 }
 
+function renderRelicPanel() {
+  if (!dom.relicList) {
+    return;
+  }
+
+  const discoveredCount = getDiscoveredRelicCount(state);
+  const totalLevels = getTotalRelicLevels(state);
+  const forgeReady = state.player.gunShards >= 100;
+
+  dom.relicForgeStatus.textContent = `총기 조각 ${formatCompact(state.player.gunShards)} / 100`;
+  dom.relicCollectionSummary.textContent = `${discoveredCount}종 / 총 레벨 ${formatCompact(totalLevels)}`;
+  dom.forgeRelicButton.disabled = !forgeReady;
+
+  const markup = RELIC_CATALOG.map((relic) => {
+    const level = state.player.relics[relic.id] ?? 0;
+    const discovered = level > 0;
+    return `
+      <article class="upgrade-card relic-card ${discovered ? "is-owned" : "is-locked"}">
+        <header>
+          <h4>${relic.name}</h4>
+          <span class="badge">${discovered ? `Lv.${level}` : "미발견"}</span>
+        </header>
+        <div class="upgrade-meta">
+          <div>${relic.category}</div>
+          <div class="muted">${relic.description}</div>
+          <div class="stat-line"><span>현재 효과</span><strong>${discovered ? formatRelicEffect(relic, level) : "획득 필요"}</strong></div>
+        </div>
+      </article>
+    `;
+  }).join("");
+
+  if (renderCache.relics !== markup) {
+    renderCache.relics = markup;
+    dom.relicList.innerHTML = markup;
+  }
+}
+
+function forgeRelic() {
+  if (state.player.gunShards < 100) {
+    addLog(state, "유물 생성 실패. 총기 조각이 100개 필요합니다.");
+    return;
+  }
+
+  state.player.gunShards -= 100;
+  const relic = RELIC_CATALOG[Math.floor(Math.random() * RELIC_CATALOG.length)];
+  const previousLevel = state.player.relics[relic.id] ?? 0;
+  state.player.relics[relic.id] = previousLevel + 1;
+
+  addLog(
+    state,
+    previousLevel > 0
+      ? `유물 중복 획득: ${relic.name} Lv.${state.player.relics[relic.id]}`
+      : `새 유물 획득: ${relic.name} Lv.1`
+  );
+
+  saveGame(true);
+}
+
 function renderLogs() {
   if (state.logs.length === 0) {
     const emptyMarkup = `<div class="empty-log">아직 기록된 전투 이벤트가 없습니다.</div>`;
@@ -1954,6 +2124,90 @@ function addLog(gameState, text) {
   }
 }
 
+function normalizeRelicCollection(value) {
+  if (!value || typeof value !== "object") {
+    return {};
+  }
+
+  return Object.entries(value).reduce((result, [relicId, level]) => {
+    if (!RELIC_BY_ID[relicId]) {
+      return result;
+    }
+
+    const normalizedLevel = Math.max(0, Math.round(Number(level) || 0));
+    if (normalizedLevel > 0) {
+      result[relicId] = normalizedLevel;
+    }
+    return result;
+  }, {});
+}
+
+function getDiscoveredRelicCount(gameState) {
+  return Object.values(gameState.player.relics).filter((level) => level > 0).length;
+}
+
+function getTotalRelicLevels(gameState) {
+  return Object.values(gameState.player.relics).reduce((sum, level) => sum + level, 0);
+}
+
+function getRelicEffectTotal(gameState, effectKey) {
+  return Object.entries(gameState.player.relics).reduce((sum, [relicId, level]) => {
+    const relic = RELIC_BY_ID[relicId];
+    if (!relic || relic.effectKey !== effectKey) {
+      return sum;
+    }
+    return sum + relic.effectValue * level;
+  }, 0);
+}
+
+function getTrophyRewardMultiplier(gameState) {
+  return (
+    1 +
+    gameState.player.permanentUpgrades.trophyGain * 0.05 +
+    getRelicEffectTotal(gameState, "trophyGainMultiplier")
+  );
+}
+
+function getStoneRewardMultiplier(gameState) {
+  return 1 + getRelicEffectTotal(gameState, "stoneGainMultiplier");
+}
+
+function getBossDropChance(gameState) {
+  return clamp(0.2 + getRelicEffectTotal(gameState, "bossDropChanceFlat"), 0, 0.95);
+}
+
+function getGunShardYield(gunRef) {
+  const gun = normalizeGunInstance(gunRef);
+  return gun ? 1 + gun.tier : 0;
+}
+
+function grantGunShardsFromGun(gunRef) {
+  const shardGain = getGunShardYield(gunRef);
+  state.player.gunShards += shardGain;
+  return shardGain;
+}
+
+function formatRelicEffect(relic, level) {
+  const totalValue = relic.effectValue * level;
+  switch (relic.effectKey) {
+    case "stoneGainMultiplier":
+    case "trophyGainMultiplier":
+    case "gunDamageMultiplier":
+    case "hpMultiplier":
+      return `+${(totalValue * 100).toFixed(1).replace(/\.0$/, "")}%`;
+    case "attackSpeedReduction":
+      return `공속 스탯 -${(totalValue * 100).toFixed(1).replace(/\.0$/, "")}%`;
+    case "critChanceFlat":
+      return `치확 +${formatChance(totalValue)}`;
+    case "critDamageFlat":
+      return `치피 +${totalValue.toFixed(0)}%`;
+    case "bossDropChanceFlat":
+      return `보스 드랍 +${(totalValue * 100).toFixed(1).replace(/\.0$/, "")}%p`;
+    default:
+      return `${totalValue}`;
+  }
+}
+
 function createGunInstance(gunId, tier = 0) {
   if (!GUN_BY_ID[gunId]) {
     return null;
@@ -2067,7 +2321,7 @@ function getEnemyGlyph(enemyType) {
   if (enemyType === "miniboss") {
     return "ELITE";
   }
-  return "TARGET";
+  return "ENEMY";
 }
 
 function clamp(value, min, max) {
@@ -2076,6 +2330,10 @@ function clamp(value, min, max) {
 
 function formatChance(value) {
   return `${(value / 100).toFixed(value >= 1000 ? 1 : 2)}%`;
+}
+
+function formatRatePercent(value) {
+  return `${(value * 100).toFixed(value >= 0.1 ? 1 : 2).replace(/\.?0+$/, "")}%`;
 }
 
 function formatCompact(value) {

@@ -40,6 +40,11 @@
           <strong id="stoneValue">0</strong>
           <small>환생 후에도 유지</small>
         </article>
+        <article class="hud-card">
+          <span>총기 조각</span>
+          <strong id="shardValue">0</strong>
+          <small>100개마다 유물 1개</small>
+        </article>
         <article class="hud-card emphasis">
           <span>총 기대 DPS</span>
           <strong id="dpsValue">0 DPS</strong>
@@ -68,7 +73,7 @@
             <div class="enemy-portrait-ring ring-outer"></div>
             <div class="enemy-portrait-ring ring-inner"></div>
             <div class="enemy-portrait-core"></div>
-            <div class="enemy-glyph" id="enemyGlyph">TARGET</div>
+            <div class="enemy-glyph" id="enemyGlyph">ENEMY</div>
           </div>
         </section>
 
@@ -162,6 +167,7 @@
           장착
           <span id="loadoutTabAlert" class="tab-alert hidden">NEW</span>
         </button>
+        <button type="button" class="tab-button" data-tab="relics">유물</button>
         <button type="button" class="tab-button" data-tab="upgrades">강화</button>
       </div>
 
@@ -196,7 +202,7 @@
               <div id="dropGunCard" class="drop-gun-card hidden"></div>
               <div id="dropChoices" class="drop-choice-list hidden"></div>
               <div class="inline-actions hidden" id="dropActionBar">
-                <button id="discardDropButton" type="button" class="secondary-button">버리기</button>
+                <button id="discardDropButton" type="button" class="secondary-button">해체하기</button>
               </div>
             </div>
           </div>
@@ -219,6 +225,23 @@
               </div>
               <div id="stoneUpgrades" class="upgrade-list"></div>
             </div>
+          </div>
+        </section>
+
+        <section class="detail-panel hidden" data-panel="relics">
+          <div class="subpanel">
+            <div class="subpanel-head">
+              <h3>유물 보관함</h3>
+              <span id="relicForgeStatus" class="muted">총기 조각 0 / 100</span>
+            </div>
+            <div class="panel-heading">
+              <div class="event-banner">
+                <span>유물 수집</span>
+                <strong id="relicCollectionSummary">0종 / 총 레벨 0</strong>
+              </div>
+              <button id="forgeRelicButton" type="button" class="primary-button">유물 생성 (100)</button>
+            </div>
+            <div id="relicList" class="upgrade-list"></div>
           </div>
         </section>
       </div>

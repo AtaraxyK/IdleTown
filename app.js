@@ -465,6 +465,7 @@ let frameHandle = 0;
 let lastFrameTime = performance.now();
 let hiddenStartedAt = null;
 let activeDetailTab = "loadout";
+let lastRenderedDropKey = null;
 
 initialize();
 
@@ -1401,12 +1402,20 @@ function renderDetailTabs() {
 function renderDropModal() {
   if (!state.activeDrop) {
     dom.dropModal.classList.add("hidden");
+    lastRenderedDropKey = null;
     return;
   }
 
   const gun = GUN_BY_ID[state.activeDrop.gunId];
   const stats = getEffectiveGunStats(gun.id);
+  const renderKey = `${state.activeDrop.gunId}|${state.activeDrop.stage}|${state.player.equippedGunIds.join(",")}`;
   dom.dropModal.classList.remove("hidden");
+
+  if (lastRenderedDropKey === renderKey) {
+    return;
+  }
+
+  lastRenderedDropKey = renderKey;
   dom.dropTitle.textContent = `${gun.name} 획득`;
   dom.dropSubtitle.textContent = `스테이지 ${state.activeDrop.stage} 보스 드랍. 장착할 슬롯을 선택하세요.`;
 

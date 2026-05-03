@@ -359,7 +359,7 @@ const TEMP_UPGRADE_CONFIG = [
   {
     key: "hp",
     label: "플레이어 HP 성장",
-    description: "이번 생존 동안 최대 HP +60",
+    description: "이번 생존 동안 최대 HP +25",
     getCost: (level) => Math.round(24 * Math.pow(1.72, level) + level * 14)
   },
   {
@@ -380,7 +380,7 @@ const PERMANENT_UPGRADE_CONFIG = [
   {
     key: "hp",
     label: "HP 강화",
-    description: "최대 HP +75",
+    description: "최대 HP +35",
     getCost: (level) => Math.round(3 + 3 * Math.pow(1.44, level))
   },
   {
@@ -497,7 +497,7 @@ function createInitialState() {
     player: {
       stage: 1,
       enemyNumber: 1,
-      hp: 260,
+      hp: 100,
       trophies: 0,
       stones: 0,
       haltedStage: null,
@@ -740,6 +740,7 @@ function enemyAttack() {
 
 function handleEnemyDefeat() {
   const defeatedEnemy = state.currentEnemy;
+  const shouldRestoreHp = defeatedEnemy.enemyNumber === 5 || defeatedEnemy.enemyNumber === 10;
   grantKillRewards(defeatedEnemy, 1, 1);
 
   addLog(
@@ -757,7 +758,9 @@ function handleEnemyDefeat() {
 
     state.player.stage = nextStage;
     state.player.enemyNumber = 1;
-    state.player.hp = getMaxHp(state);
+    if (shouldRestoreHp) {
+      state.player.hp = getMaxHp(state);
+    }
 
     addLog(
       state,
@@ -767,6 +770,11 @@ function handleEnemyDefeat() {
     );
   } else {
     state.player.enemyNumber += 1;
+
+    if (shouldRestoreHp) {
+      state.player.hp = getMaxHp(state);
+      addLog(state, `${defeatedEnemy.typeLabel} 격파 후 플레이어 HP 전회복.`);
+    }
   }
 
   state.currentEnemy = createEnemy(state.player.stage, state.player.enemyNumber);
@@ -887,9 +895,9 @@ function getPendingStoneRewards(gameState) {
 
 function getMaxHp(gameState) {
   return (
-    260 +
-    gameState.player.tempUpgrades.hp * 60 +
-    gameState.player.permanentUpgrades.hp * 75
+    100 +
+    gameState.player.tempUpgrades.hp * 25 +
+    gameState.player.permanentUpgrades.hp * 35
   );
 }
 
@@ -964,11 +972,11 @@ function createEnemy(stage, enemyNumber) {
   const unitPool = type === "normal" ? normalUnits : type === "miniboss" ? eliteUnits : bossUnits;
   const unit = unitPool[(stage + enemyNumber) % unitPool.length];
 
-  const curve = 1 + stage * 0.12 + Math.pow(stage, 1.65) * 0.05;
-  const baseHp = (56 + stage * 18) * curve;
-  const baseAttack = (4 + stage * 1.25) * (1 + stage * 0.08 + Math.pow(stage, 1.45) * 0.03);
-  const hpMultiplier = type === "normal" ? 1 : type === "miniboss" ? 2.8 : 4.8;
-  const attackMultiplier = type === "normal" ? 1 : type === "miniboss" ? 1.18 : 1.45;
+  const curve = 1 + stage * 0.06 + Math.pow(stage, 1.5) * 0.02;
+  const baseHp = (7 + stage * 2.3) * curve;
+  const baseAttack = (1.1 + stage * 0.55) * (1 + stage * 0.05 + Math.pow(stage, 1.3) * 0.02);
+  const hpMultiplier = type === "normal" ? 1 : type === "miniboss" ? 2.1 : 3.6;
+  const attackMultiplier = type === "normal" ? 1 : type === "miniboss" ? 1.12 : 1.28;
   const rewardMultiplier = type === "normal" ? 1 : type === "miniboss" ? 3.4 : 6.4;
 
   const maxHp = Math.round(baseHp * hpMultiplier);

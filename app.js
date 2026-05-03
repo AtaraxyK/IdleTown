@@ -507,7 +507,7 @@ const TEMP_UPGRADE_CONFIG = [
     key: "slots",
     label: "총기 슬롯 추가",
     description: "이번 생존 동안 장착 슬롯 +1",
-    getCost: (level) => Math.round(220 * Math.pow(2.45, level))
+    getCost: (level) => Math.round(420 * Math.pow(2.5, level))
   }
 ];
 
@@ -1200,7 +1200,7 @@ function createEnemy(stage, enemyNumber) {
 }
 
 function handleUpgradeClick(event) {
-  const button = event.target.closest("button[data-upgrade-key]");
+  const button = event.target.closest("button[data-upgrade-key][data-upgrade-mode]");
   if (!button) {
     return;
   }
@@ -1209,6 +1209,12 @@ function handleUpgradeClick(event) {
 
   const key = button.dataset.upgradeKey;
   const currency = button.dataset.currency;
+  const mode = button.dataset.upgradeMode ?? "single";
+  const purchase = purchaseUpgrade(key, currency, mode);
+  if (purchase) {
+    saveGame(true);
+  }
+  return;
 
   if (currency === "trophies") {
     const config = TEMP_UPGRADE_CONFIG.find((entry) => entry.key === key);
@@ -1255,6 +1261,83 @@ function handleUpgradeClick(event) {
   }
 
   saveGame(true);
+}
+
+function purchaseUpgrade(key, currency, mode) {
+  const configList = currency === "trophies" ? TEMP_UPGRADE_CONFIG : currency === "stones" ? PERMANENT_UPGRADE_CONFIG : null;
+  const upgradeState =
+    currency === "trophies"
+      ? state.player.tempUpgrades
+      : currency === "stones"
+        ? state.player.permanentUpgrades
+        : null;
+  const walletKey = currency === "trophies" ? "trophies" : currency === "stones" ? "stones" : null;
+
+  if (!configList || !upgradeState || !walletKey) {
+    return null;
+  }
+
+  const config = configList.find((entry) => entry.key === key);
+  if (!config) {
+    return null;
+  }
+
+  const level = upgradeState[key];
+  const budget = state.player[walletKey];
+  const purchase =
+    mode === "max"
+      ? getMaxAffordableUpgradePurchase(config, level, budget)
+      : {
+          levels: budget >= config.getCost(level) ? 1 : 0,
+          totalCost: config.getCost(level)
+        };
+
+  if (purchase.levels <= 0) {
+    addLog(
+      state,
+      currency === "trophies"
+        ? `${config.label} 강화 실패. 전리품이 부족합니다.`
+        : `${config.label} 강화 실패. 강화석이 부족합니다.`
+    );
+    return null;
+  }
+
+  state.player[walletKey] -= purchase.totalCost;
+  upgradeState[key] += purchase.levels;
+  syncEquipment(state);
+
+  const healRatio = currency === "trophies" ? 0.08 : 0.05;
+  const healFloor = currency === "trophies" ? 4 : 3;
+  const healAmount = Math.max(healFloor, Math.round(getMaxHp(state) * healRatio)) * purchase.levels;
+  state.player.hp = Math.min(getMaxHp(state), state.player.hp + healAmount);
+
+  addLog(
+    state,
+    purchase.levels > 1
+      ? `${config.label} 최대 강화 ${purchase.levels}회 적용. Lv.${upgradeState[key]}`
+      : `${config.label} Lv.${upgradeState[key]} 달성`
+  );
+
+  return purchase;
+}
+
+function getMaxAffordableUpgradePurchase(config, startingLevel, budget) {
+  let level = startingLevel;
+  let levels = 0;
+  let totalCost = 0;
+
+  while (levels < 999) {
+    const nextCost = config.getCost(level);
+    if (totalCost + nextCost > budget) {
+      break;
+    }
+
+    totalCost += nextCost;
+    level += 1;
+    levels += 1;
+  }
+
+  return { levels, totalCost };
 }
 
 function handleDropChoice(event) {
@@ -1368,7 +1451,7 @@ function render() {
   renderArena();
   renderStats();
   renderGunSlots();
-  renderUpgrades();
+  renderUpgradePanels();
   renderLogs();
   renderDetailTabs();
   renderLoadoutWorkbench();
@@ -1529,6 +1612,7 @@ function renderUpgrades() {
     const level = state.player.tempUpgrades[config.key];
     const cost = config.getCost(level);
     const affordable = state.player.trophies >= cost;
+    const maxPurchase = getMaxAffordableUpgradePurchase(config, level, state.player.trophies);
     return `
       <article class="upgrade-card">
         <header>
@@ -1539,15 +1623,31 @@ function renderUpgrades() {
           <div>${config.description}</div>
           <div class="stat-line"><span>비용</span><strong>${formatCompact(cost)} 전리품</strong></div>
         </div>
+        <div class="stat-line"><span>최대 강화</span><strong>${maxPurchase.levels > 0 ? `${maxPurchase.levels}회 / ${formatCompact(maxPurchase.totalCost)}` : "불가"}</strong></div>
+        <div class="upgrade-actions">
+        <div class="stat-line"><span>최대 강화</span><strong>${maxPurchase.levels > 0 ? `${maxPurchase.levels}회 / ${formatCompact(maxPurchase.totalCost)}` : "불가"}</strong></div>
+        <div class="upgrade-actions">
         <button
           type="button"
           class="${affordable ? "primary-button" : "secondary-button"}"
           data-upgrade-key="${config.key}"
+          data-upgrade-mode="single"
           data-currency="trophies"
           ${affordable ? "" : "disabled"}
         >
           강화
         </button>
+        <button
+          type="button"
+          class="secondary-button"
+          data-upgrade-key="${config.key}"
+          data-upgrade-mode="max"
+          data-currency="trophies"
+          ${maxPurchase.levels > 0 ? "" : "disabled"}
+        >
+          최대 강화
+        </button>
+        </div>
       </article>
     `;
   }).join("");
@@ -1561,6 +1661,7 @@ function renderUpgrades() {
     const level = state.player.permanentUpgrades[config.key];
     const cost = config.getCost(level);
     const affordable = state.player.stones >= cost;
+    const maxPurchase = getMaxAffordableUpgradePurchase(config, level, state.player.stones);
     return `
       <article class="upgrade-card">
         <header>
@@ -1571,15 +1672,29 @@ function renderUpgrades() {
           <div>${config.description}</div>
           <div class="stat-line"><span>비용</span><strong>${formatCompact(cost)} 강화석</strong></div>
         </div>
+        <div class="stat-line"><span>최대 강화</span><strong>${maxPurchase.levels > 0 ? `${maxPurchase.levels}회 / ${formatCompact(maxPurchase.totalCost)}` : "불가"}</strong></div>
+        <div class="upgrade-actions">
         <button
           type="button"
           class="${affordable ? "primary-button" : "secondary-button"}"
           data-upgrade-key="${config.key}"
+          data-upgrade-mode="single"
           data-currency="stones"
           ${affordable ? "" : "disabled"}
         >
           강화
         </button>
+        <button
+          type="button"
+          class="secondary-button"
+          data-upgrade-key="${config.key}"
+          data-upgrade-mode="max"
+          data-currency="stones"
+          ${maxPurchase.levels > 0 ? "" : "disabled"}
+        >
+          최대 강화
+        </button>
+        </div>
       </article>
     `;
   }).join("");
@@ -1588,6 +1703,80 @@ function renderUpgrades() {
     renderCache.stoneUpgrades = stoneMarkup;
     dom.stoneUpgrades.innerHTML = stoneMarkup;
   }
+}
+
+function renderUpgradePanels() {
+  const trophyMarkup = TEMP_UPGRADE_CONFIG.map((config) =>
+    buildUpgradeCardMarkup({
+      config,
+      level: state.player.tempUpgrades[config.key],
+      currency: "trophies",
+      wallet: state.player.trophies,
+      unitLabel: "전리품"
+    })
+  ).join("");
+
+  if (renderCache.tempUpgrades !== trophyMarkup) {
+    renderCache.tempUpgrades = trophyMarkup;
+    dom.trophyUpgrades.innerHTML = trophyMarkup;
+  }
+
+  const stoneMarkup = PERMANENT_UPGRADE_CONFIG.map((config) =>
+    buildUpgradeCardMarkup({
+      config,
+      level: state.player.permanentUpgrades[config.key],
+      currency: "stones",
+      wallet: state.player.stones,
+      unitLabel: "강화석"
+    })
+  ).join("");
+
+  if (renderCache.stoneUpgrades !== stoneMarkup) {
+    renderCache.stoneUpgrades = stoneMarkup;
+    dom.stoneUpgrades.innerHTML = stoneMarkup;
+  }
+}
+
+function buildUpgradeCardMarkup({ config, level, currency, wallet, unitLabel }) {
+  const cost = config.getCost(level);
+  const affordable = wallet >= cost;
+  const maxPurchase = getMaxAffordableUpgradePurchase(config, level, wallet);
+
+  return `
+    <article class="upgrade-card">
+      <header>
+        <h4>${config.label}</h4>
+        <span class="badge">Lv.${level}</span>
+      </header>
+      <div class="upgrade-meta">
+        <div>${config.description}</div>
+        <div class="stat-line"><span>비용</span><strong>${formatCompact(cost)} ${unitLabel}</strong></div>
+        <div class="stat-line"><span>최대 강화</span><strong>${maxPurchase.levels > 0 ? `${maxPurchase.levels}회 / ${formatCompact(maxPurchase.totalCost)}` : "불가"}</strong></div>
+      </div>
+      <div class="upgrade-actions">
+        <button
+          type="button"
+          class="${affordable ? "primary-button" : "secondary-button"}"
+          data-upgrade-key="${config.key}"
+          data-upgrade-mode="single"
+          data-currency="${currency}"
+          ${affordable ? "" : "disabled"}
+        >
+          강화
+        </button>
+        <button
+          type="button"
+          class="secondary-button"
+          data-upgrade-key="${config.key}"
+          data-upgrade-mode="max"
+          data-currency="${currency}"
+          ${maxPurchase.levels > 0 ? "" : "disabled"}
+        >
+          최대 강화
+        </button>
+      </div>
+    </article>
+  `;
 }
 
 function renderLogs() {
@@ -1705,15 +1894,24 @@ function renderLoadoutWorkbench() {
     <div class="stat-line"><span>기대 DPS</span><strong>${formatCompact(stats.dps)}</strong></div>
   `;
 
+  const bestPositiveDelta = Math.max(
+    0,
+    ...state.player.equippedGunIds.map((equippedGun) => {
+      const equippedStats = equippedGun ? getEffectiveGunStats(equippedGun) : null;
+      return equippedStats ? stats.dps - equippedStats.dps : stats.dps;
+    })
+  );
+
   dom.dropChoices.innerHTML = state.player.equippedGunIds
     .map((equippedGun, index) => {
       const gunId = equippedGun?.gunId ?? null;
       const equippedStats = equippedGun ? getEffectiveGunStats(equippedGun) : null;
       const delta = equippedStats ? stats.dps - equippedStats.dps : stats.dps;
       const deltaClass = delta >= 0 ? "good" : "bad";
+      const isRecommended = bestPositiveDelta > 0 && Math.abs(delta - bestPositiveDelta) < 0.0001;
 
       return `
-        <article class="drop-choice">
+        <article class="drop-choice ${isRecommended ? "recommended" : ""}">
           <header>
             <h4>슬롯 ${index + 1}</h4>
             <span class="badge">${gunId ? GUN_BY_ID[gunId].name : "빈 슬롯"}</span>
@@ -1721,6 +1919,7 @@ function renderLoadoutWorkbench() {
           <div class="inline-rarity">
             ${equippedGun ? buildRarityBadgeMarkup(equippedGun.tier) : `<span class="badge">빈 슬롯</span>`}
           </div>
+          ${isRecommended ? `<div class="inline-rarity"><span class="badge recommend-badge">추천 슬롯</span></div>` : ""}
           <div class="muted">
             ${
               equippedStats

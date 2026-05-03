@@ -69,8 +69,7 @@ body {
 
 .hud-strip,
 .battle-stage,
-.control-deck,
-.modal-card {
+.control-deck {
   padding: 20px;
 }
 
@@ -528,6 +527,13 @@ button:disabled {
   gap: 14px;
 }
 
+.loadout-layout,
+.upgrade-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
 .combat-stat-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -584,6 +590,15 @@ button:disabled {
   gap: 8px;
 }
 
+.drop-workbench {
+  align-content: start;
+}
+
+.inline-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
 .log-list {
   display: grid;
   gap: 10px;
@@ -618,23 +633,7 @@ button:disabled {
   display: none !important;
 }
 
-.modal {
-  position: fixed;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  padding: 24px;
-  background: rgba(6, 10, 14, 0.68);
-  backdrop-filter: blur(8px);
-  z-index: 10;
-}
-
-.modal-card {
-  width: min(760px, 100%);
-}
-
 .drop-gun-card {
-  margin-top: 18px;
   padding: 18px;
   background: rgba(118, 225, 255, 0.08);
   border: 1px solid rgba(118, 225, 255, 0.18);
@@ -647,11 +646,6 @@ button:disabled {
 
 .delta.bad {
   color: var(--danger);
-}
-
-.modal-actions {
-  justify-content: flex-end;
-  margin-top: 18px;
 }
 
 @keyframes pulse-ring {
@@ -699,14 +693,15 @@ button:disabled {
 
   .hud-strip,
   .battle-stage,
-  .control-deck,
-  .modal-card {
+  .control-deck {
     padding: 16px;
   }
 
   .hud-resources,
   .arena-summary,
   .deck-meta,
+  .loadout-layout,
+  .upgrade-grid,
   .combat-stat-grid,
   .gun-slot-list,
   .upgrade-list,

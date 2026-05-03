@@ -358,15 +358,33 @@ const GUN_BY_ID = Object.fromEntries(GUN_CATALOG.map((gun) => [gun.id, gun]));
 const TEMP_UPGRADE_CONFIG = [
   {
     key: "hp",
-    label: "플레이어 HP 성장",
-    description: "이번 생존 동안 최대 HP +25",
+    label: "HP 강화",
+    description: "이번 생존 동안 최대 HP +8%",
     getCost: (level) => Math.round(24 * Math.pow(1.72, level) + level * 14)
   },
   {
-    key: "gun",
-    label: "장착 총기 성장",
-    description: "이번 생존 동안 모든 총기 공격력 +12%",
+    key: "gunDamage",
+    label: "총기 공격력 강화",
+    description: "이번 생존 동안 모든 총기 공격력 +4%",
     getCost: (level) => Math.round(32 * Math.pow(1.76, level) + level * 18)
+  },
+  {
+    key: "critChance",
+    label: "치명타 확률 강화",
+    description: "이번 생존 동안 모든 총기 치명타 확률 +0.7%",
+    getCost: (level) => Math.round(36 * Math.pow(1.8, level) + level * 18)
+  },
+  {
+    key: "critDamage",
+    label: "치명타 배율 강화",
+    description: "이번 생존 동안 모든 총기 치명타 배율 +4%",
+    getCost: (level) => Math.round(40 * Math.pow(1.84, level) + level * 20)
+  },
+  {
+    key: "attackSpeed",
+    label: "공격 속도 강화",
+    description: "이번 생존 동안 모든 총기 공격 속도 스탯 -0.8%",
+    getCost: (level) => Math.round(42 * Math.pow(1.86, level) + level * 22)
   },
   {
     key: "slots",
@@ -380,38 +398,38 @@ const PERMANENT_UPGRADE_CONFIG = [
   {
     key: "hp",
     label: "HP 강화",
-    description: "최대 HP +35",
+    description: "최대 HP +5%",
     getCost: (level) => Math.round(3 + 3 * Math.pow(1.44, level))
   },
   {
     key: "gunDamage",
     label: "총기 공격력 강화",
-    description: "모든 총기 공격력 +8%",
+    description: "모든 총기 공격력 +2.5%",
     getCost: (level) => Math.round(4 + 3 * Math.pow(1.5, level))
   },
   {
     key: "critChance",
     label: "치명타 확률 강화",
-    description: "모든 총기 치명타 확률 +1.4%",
+    description: "모든 총기 치명타 확률 +0.4%",
     getCost: (level) => Math.round(4 + 4 * Math.pow(1.52, level))
   },
   {
     key: "critDamage",
     label: "치명타 배율 강화",
-    description: "모든 총기 치명타 배율 +8%",
+    description: "모든 총기 치명타 배율 +2.5%",
     getCost: (level) => Math.round(5 + 4 * Math.pow(1.56, level))
   },
   {
     key: "attackSpeed",
     label: "공격 속도 강화",
-    description: "모든 총기 공격 속도 스탯 -2.5%",
+    description: "모든 총기 공격 속도 스탯 -0.4%",
     getCost: (level) => Math.round(5 + 5 * Math.pow(1.6, level))
   },
   {
     key: "slots",
     label: "총기 슬롯 추가",
     description: "영구 장착 슬롯 +1",
-    getCost: (level) => Math.round(18 + 16 * Math.pow(2.4, level))
+    getCost: (level) => Math.round((18 + 16 * Math.pow(2.4, level)) * 10)
   }
 ];
 
@@ -450,11 +468,11 @@ const dom = {
   slotSummary: document.getElementById("slotSummary"),
   trophyUpgrades: document.getElementById("trophyUpgrades"),
   stoneUpgrades: document.getElementById("stoneUpgrades"),
+  dropEmptyState: document.getElementById("dropEmptyState"),
+  dropQueueCount: document.getElementById("dropQueueCount"),
+  dropActionBar: document.getElementById("dropActionBar"),
   detailTabs: document.getElementById("detailTabs"),
   detailPanels: Array.from(document.querySelectorAll(".detail-panel")),
-  dropModal: document.getElementById("dropModal"),
-  dropTitle: document.getElementById("dropTitle"),
-  dropSubtitle: document.getElementById("dropSubtitle"),
   dropGunCard: document.getElementById("dropGunCard"),
   dropChoices: document.getElementById("dropChoices"),
   discardDropButton: document.getElementById("discardDropButton")
@@ -464,8 +482,15 @@ let state = loadState();
 let frameHandle = 0;
 let lastFrameTime = performance.now();
 let hiddenStartedAt = null;
-let activeDetailTab = "loadout";
-let lastRenderedDropKey = null;
+let activeDetailTab = "combat";
+const renderCache = {
+  stats: "",
+  gunSlots: "",
+  tempUpgrades: "",
+  stoneUpgrades: "",
+  logs: "",
+  dropWorkbench: ""
+};
 
 initialize();
 
@@ -478,15 +503,16 @@ function initialize() {
 
   dom.toggleHaltButton.addEventListener("click", toggleHaltMode);
   dom.reincarnateButton.addEventListener("click", reincarnate);
-  dom.trophyUpgrades.addEventListener("click", handleUpgradeClick);
-  dom.stoneUpgrades.addEventListener("click", handleUpgradeClick);
+  dom.trophyUpgrades.addEventListener("pointerdown", handleUpgradeClick);
+  dom.stoneUpgrades.addEventListener("pointerdown", handleUpgradeClick);
   dom.detailTabs.addEventListener("click", handleDetailTabClick);
-  dom.dropChoices.addEventListener("click", handleDropChoice);
-  dom.discardDropButton.addEventListener("click", discardActiveDrop);
+  dom.dropChoices.addEventListener("pointerdown", handleDropChoice);
+  dom.discardDropButton.addEventListener("pointerdown", discardActiveDrop);
 
   document.addEventListener("visibilitychange", handleVisibilityChange);
   window.addEventListener("beforeunload", () => saveGame(true));
 
+  openPendingDropIfNeeded();
   render();
   saveGame(true);
   frameHandle = requestAnimationFrame(gameLoop);
@@ -504,7 +530,10 @@ function createInitialState() {
       haltedStage: null,
       tempUpgrades: {
         hp: 0,
-        gun: 0,
+        gunDamage: 0,
+        critChance: 0,
+        critDamage: 0,
+        attackSpeed: 0,
         slots: 0
       },
       permanentUpgrades: {
@@ -565,6 +594,7 @@ function loadState() {
 
 function normalizeState(source) {
   const defaults = createInitialState();
+  const legacyTempGunLevel = source.player?.tempUpgrades?.gun ?? 0;
   const normalized = {
     ...defaults,
     ...source,
@@ -573,7 +603,8 @@ function normalizeState(source) {
       ...source.player,
       tempUpgrades: {
         ...defaults.player.tempUpgrades,
-        ...source.player?.tempUpgrades
+        ...source.player?.tempUpgrades,
+        gunDamage: source.player?.tempUpgrades?.gunDamage ?? legacyTempGunLevel
       },
       permanentUpgrades: {
         ...defaults.player.permanentUpgrades,
@@ -834,6 +865,7 @@ function openPendingDropIfNeeded() {
   }
 
   state.activeDrop = state.pendingDrops.shift();
+  activeDetailTab = "loadout";
 }
 
 function rollGunDrop(stage) {
@@ -895,11 +927,11 @@ function getPendingStoneRewards(gameState) {
 }
 
 function getMaxHp(gameState) {
-  return (
-    100 +
-    gameState.player.tempUpgrades.hp * 25 +
-    gameState.player.permanentUpgrades.hp * 35
-  );
+  const hpMultiplier =
+    1 +
+    gameState.player.tempUpgrades.hp * 0.08 +
+    gameState.player.permanentUpgrades.hp * 0.05;
+  return Math.max(1, Math.round(100 * hpMultiplier));
 }
 
 function getSlotCount(gameState) {
@@ -908,13 +940,19 @@ function getSlotCount(gameState) {
 
 function getEffectiveGunStats(gunId) {
   const gun = GUN_BY_ID[gunId];
-  const tempGunBonus = state.player.tempUpgrades.gun * 0.12;
-  const permanentDamageBonus = state.player.permanentUpgrades.gunDamage * 0.08;
-  const critChanceBonus = state.player.permanentUpgrades.critChance * 140;
-  const critDamageBonus = state.player.permanentUpgrades.critDamage * 8;
+  const tempGunBonus = state.player.tempUpgrades.gunDamage * 0.04;
+  const permanentDamageBonus = state.player.permanentUpgrades.gunDamage * 0.025;
+  const critChanceBonus =
+    state.player.tempUpgrades.critChance * 70 +
+    state.player.permanentUpgrades.critChance * 40;
+  const critDamageBonus =
+    state.player.tempUpgrades.critDamage * 4 +
+    state.player.permanentUpgrades.critDamage * 2.5;
   const attackSpeedFactor = Math.max(
-    0.34,
-    1 - state.player.permanentUpgrades.attackSpeed * 0.025
+    0.55,
+    1 -
+      state.player.tempUpgrades.attackSpeed * 0.008 -
+      state.player.permanentUpgrades.attackSpeed * 0.004
   );
   const effectiveAttackSpeed = Math.max(8, gun.attackSpeed * attackSpeedFactor);
   const attackIntervalSeconds = effectiveAttackSpeed / 60;
@@ -1009,6 +1047,8 @@ function handleUpgradeClick(event) {
     return;
   }
 
+  event.preventDefault();
+
   const key = button.dataset.upgradeKey;
   const currency = button.dataset.currency;
 
@@ -1027,7 +1067,10 @@ function handleUpgradeClick(event) {
     state.player.trophies -= cost;
     state.player.tempUpgrades[key] += 1;
     syncEquipment(state);
-    state.player.hp = Math.min(getMaxHp(state), state.player.hp + 40);
+    state.player.hp = Math.min(
+      getMaxHp(state),
+      state.player.hp + Math.max(4, Math.round(getMaxHp(state) * 0.08))
+    );
     addLog(state, `${config.label} Lv.${state.player.tempUpgrades[key]} 달성`);
   }
 
@@ -1046,7 +1089,10 @@ function handleUpgradeClick(event) {
     state.player.stones -= cost;
     state.player.permanentUpgrades[key] += 1;
     syncEquipment(state);
-    state.player.hp = Math.min(getMaxHp(state), state.player.hp + 50);
+    state.player.hp = Math.min(
+      getMaxHp(state),
+      state.player.hp + Math.max(3, Math.round(getMaxHp(state) * 0.05))
+    );
     addLog(state, `${config.label} Lv.${state.player.permanentUpgrades[key]} 달성`);
   }
 
@@ -1058,6 +1104,8 @@ function handleDropChoice(event) {
   if (!button || !state.activeDrop) {
     return;
   }
+
+  event.preventDefault();
 
   const slotIndex = Number(button.dataset.slotIndex);
   const gunId = state.activeDrop.gunId;
@@ -1077,9 +1125,13 @@ function handleDropChoice(event) {
   saveGame(true);
 }
 
-function discardActiveDrop() {
+function discardActiveDrop(event) {
   if (!state.activeDrop) {
     return;
+  }
+
+  if (event?.preventDefault) {
+    event.preventDefault();
   }
 
   addLog(state, `${GUN_BY_ID[state.activeDrop.gunId].name}를 버렸습니다.`);
@@ -1161,7 +1213,7 @@ function render() {
   renderUpgrades();
   renderLogs();
   renderDetailTabs();
-  renderDropModal();
+  renderLoadoutWorkbench();
 }
 
 function renderTopCards() {
@@ -1248,8 +1300,7 @@ function renderStats() {
     { label: "예상 강화석", value: `+${formatCompact(pendingStones)}` },
     { label: "총 슬롯", value: `${getSlotCount(state)}` }
   ];
-
-  dom.playerStats.innerHTML = statRows
+  const markup = statRows
     .map(
       (row) => `
         <article class="stat-card">
@@ -1259,13 +1310,18 @@ function renderStats() {
       `
     )
     .join("");
+
+  if (renderCache.stats !== markup) {
+    renderCache.stats = markup;
+    dom.playerStats.innerHTML = markup;
+  }
 }
 
 function renderGunSlots() {
   const slotCount = getSlotCount(state);
   dom.slotSummary.textContent = `${slotCount} 슬롯`;
 
-  dom.gunSlots.innerHTML = state.player.equippedGunIds
+  const markup = state.player.equippedGunIds
     .map((gunId, index) => {
       if (!gunId) {
         return `
@@ -1301,10 +1357,15 @@ function renderGunSlots() {
       `;
     })
     .join("");
+
+  if (renderCache.gunSlots !== markup) {
+    renderCache.gunSlots = markup;
+    dom.gunSlots.innerHTML = markup;
+  }
 }
 
 function renderUpgrades() {
-  dom.trophyUpgrades.innerHTML = TEMP_UPGRADE_CONFIG.map((config) => {
+  const trophyMarkup = TEMP_UPGRADE_CONFIG.map((config) => {
     const level = state.player.tempUpgrades[config.key];
     const cost = config.getCost(level);
     const affordable = state.player.trophies >= cost;
@@ -1331,7 +1392,12 @@ function renderUpgrades() {
     `;
   }).join("");
 
-  dom.stoneUpgrades.innerHTML = PERMANENT_UPGRADE_CONFIG.map((config) => {
+  if (renderCache.tempUpgrades !== trophyMarkup) {
+    renderCache.tempUpgrades = trophyMarkup;
+    dom.trophyUpgrades.innerHTML = trophyMarkup;
+  }
+
+  const stoneMarkup = PERMANENT_UPGRADE_CONFIG.map((config) => {
     const level = state.player.permanentUpgrades[config.key];
     const cost = config.getCost(level);
     const affordable = state.player.stones >= cost;
@@ -1357,15 +1423,24 @@ function renderUpgrades() {
       </article>
     `;
   }).join("");
+
+  if (renderCache.stoneUpgrades !== stoneMarkup) {
+    renderCache.stoneUpgrades = stoneMarkup;
+    dom.stoneUpgrades.innerHTML = stoneMarkup;
+  }
 }
 
 function renderLogs() {
   if (state.logs.length === 0) {
-    dom.battleLog.innerHTML = `<div class="empty-log">아직 기록된 전투 이벤트가 없습니다.</div>`;
+    const emptyMarkup = `<div class="empty-log">아직 기록된 전투 이벤트가 없습니다.</div>`;
+    if (renderCache.logs !== emptyMarkup) {
+      renderCache.logs = emptyMarkup;
+      dom.battleLog.innerHTML = emptyMarkup;
+    }
     return;
   }
 
-  dom.battleLog.innerHTML = state.logs
+  const markup = state.logs
     .slice(0, 8)
     .map(
       (entry) => `
@@ -1376,6 +1451,11 @@ function renderLogs() {
       `
     )
     .join("");
+
+  if (renderCache.logs !== markup) {
+    renderCache.logs = markup;
+    dom.battleLog.innerHTML = markup;
+  }
 }
 
 function handleDetailTabClick(event) {
@@ -1399,26 +1479,39 @@ function renderDetailTabs() {
   });
 }
 
-function renderDropModal() {
+function renderLoadoutWorkbench() {
+  const queuedCount = state.activeDrop ? 1 + state.pendingDrops.length : 0;
+
   if (!state.activeDrop) {
-    dom.dropModal.classList.add("hidden");
-    lastRenderedDropKey = null;
+    const emptyKey = "empty";
+    dom.dropQueueCount.textContent = "드랍된 아이템 없음";
+    dom.dropEmptyState.classList.remove("hidden");
+    dom.dropGunCard.classList.add("hidden");
+    dom.dropChoices.classList.add("hidden");
+    dom.dropActionBar.classList.add("hidden");
+
+    if (renderCache.dropWorkbench !== emptyKey) {
+      renderCache.dropWorkbench = emptyKey;
+      dom.dropGunCard.innerHTML = "";
+      dom.dropChoices.innerHTML = "";
+    }
     return;
   }
 
   const gun = GUN_BY_ID[state.activeDrop.gunId];
   const stats = getEffectiveGunStats(gun.id);
-  const renderKey = `${state.activeDrop.gunId}|${state.activeDrop.stage}|${state.player.equippedGunIds.join(",")}`;
-  dom.dropModal.classList.remove("hidden");
+  const renderKey = `${state.activeDrop.gunId}|${state.activeDrop.stage}|${state.player.equippedGunIds.join(",")}|${queuedCount}`;
+  dom.dropQueueCount.textContent = `대기 ${queuedCount}개`;
+  dom.dropEmptyState.classList.add("hidden");
+  dom.dropGunCard.classList.remove("hidden");
+  dom.dropChoices.classList.remove("hidden");
+  dom.dropActionBar.classList.remove("hidden");
 
-  if (lastRenderedDropKey === renderKey) {
+  if (renderCache.dropWorkbench === renderKey) {
     return;
   }
 
-  lastRenderedDropKey = renderKey;
-  dom.dropTitle.textContent = `${gun.name} 획득`;
-  dom.dropSubtitle.textContent = `스테이지 ${state.activeDrop.stage} 보스 드랍. 장착할 슬롯을 선택하세요.`;
-
+  renderCache.dropWorkbench = renderKey;
   dom.dropGunCard.innerHTML = `
     <header>
       <h4>${gun.name}</h4>
@@ -1426,10 +1519,11 @@ function renderDropModal() {
     </header>
     <div>${gun.family} / ${gun.manufacturer}</div>
     <div class="muted">${gun.description}</div>
+    <div class="stat-line"><span>획득 위치</span><strong>스테이지 ${state.activeDrop.stage} 보스</strong></div>
     <div class="stat-line"><span>공격력</span><strong>${formatCompact(stats.damage)}</strong></div>
     <div class="stat-line"><span>공격 속도</span><strong>${stats.attackSpeed.toFixed(1)}</strong></div>
     <div class="stat-line"><span>치확</span><strong>${formatChance(stats.critChance)}</strong></div>
-    <div class="stat-line"><span>치뎀</span><strong>+${stats.critMultiplier.toFixed(0)}%</strong></div>
+    <div class="stat-line"><span>치뎀</span><strong>+${stats.critMultiplier.toFixed(1)}%</strong></div>
     <div class="stat-line"><span>기대 DPS</span><strong>${formatCompact(stats.dps)}</strong></div>
   `;
 

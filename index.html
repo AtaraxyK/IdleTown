@@ -136,8 +136,8 @@
     <section class="control-deck panel">
       <div class="deck-header">
         <div>
-          <p class="eyebrow">Combat Deck</p>
-          <h2>장착과 강화</h2>
+          <p class="eyebrow">Combat Control</p>
+          <h2>전투 운영</h2>
         </div>
         <div class="deck-meta">
           <article class="mini-meta">
@@ -155,46 +155,15 @@
         </div>
       </div>
 
-      <div id="detailTabs" class="detail-tabs" role="tablist" aria-label="전투 상세 패널">
-        <button type="button" class="tab-button is-active" data-tab="loadout">장착 총기</button>
-        <button type="button" class="tab-button" data-tab="trophies">기본 강화</button>
-        <button type="button" class="tab-button" data-tab="stones">영구 강화</button>
-        <button type="button" class="tab-button" data-tab="logs">이벤트 로그</button>
+      <div id="detailTabs" class="detail-tabs" role="tablist" aria-label="전투 운영 패널">
+        <button type="button" class="tab-button is-active" data-tab="combat">전투</button>
+        <button type="button" class="tab-button" data-tab="loadout">장착</button>
+        <button type="button" class="tab-button" data-tab="upgrades">강화</button>
       </div>
 
       <div class="detail-panels">
-        <section class="detail-panel" data-panel="loadout">
+        <section class="detail-panel" data-panel="combat">
           <div id="playerStats" class="stat-grid combat-stat-grid"></div>
-          <div class="subpanel">
-            <div class="subpanel-head">
-              <h3>장착 총기</h3>
-              <span class="muted">보스 드랍 무기 즉시 교체</span>
-            </div>
-            <div id="gunSlots" class="gun-slot-list"></div>
-          </div>
-        </section>
-
-        <section class="detail-panel hidden" data-panel="trophies">
-          <div class="subpanel">
-            <div class="subpanel-head">
-              <h3>기본 강화</h3>
-              <span class="muted">몬스터 전리품 사용</span>
-            </div>
-            <div id="trophyUpgrades" class="upgrade-list"></div>
-          </div>
-        </section>
-
-        <section class="detail-panel hidden" data-panel="stones">
-          <div class="subpanel">
-            <div class="subpanel-head">
-              <h3>영구 강화</h3>
-              <span class="muted">강화석 사용</span>
-            </div>
-            <div id="stoneUpgrades" class="upgrade-list"></div>
-          </div>
-        </section>
-
-        <section class="detail-panel hidden" data-panel="logs">
           <div class="subpanel">
             <div class="subpanel-head">
               <h3>이벤트 로그</h3>
@@ -203,27 +172,54 @@
             <div id="battleLog" class="log-list"></div>
           </div>
         </section>
+
+        <section class="detail-panel hidden" data-panel="loadout">
+          <div class="loadout-layout">
+            <div class="subpanel">
+              <div class="subpanel-head">
+                <h3>장착 총기</h3>
+                <span class="muted">현재 장비된 무기</span>
+              </div>
+              <div id="gunSlots" class="gun-slot-list"></div>
+            </div>
+
+            <div class="subpanel drop-workbench">
+              <div class="subpanel-head">
+                <h3>드랍된 총기</h3>
+                <span id="dropQueueCount" class="muted">드랍된 아이템 없음</span>
+              </div>
+              <div id="dropEmptyState" class="empty-log">드랍된 아이템 없음</div>
+              <div id="dropGunCard" class="drop-gun-card hidden"></div>
+              <div id="dropChoices" class="drop-choice-list hidden"></div>
+              <div class="inline-actions hidden" id="dropActionBar">
+                <button id="discardDropButton" type="button" class="secondary-button">버리기</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="detail-panel hidden" data-panel="upgrades">
+          <div class="upgrade-grid">
+            <div class="subpanel">
+              <div class="subpanel-head">
+                <h3>기본 강화</h3>
+                <span class="muted">몬스터 전리품 사용</span>
+              </div>
+              <div id="trophyUpgrades" class="upgrade-list"></div>
+            </div>
+
+            <div class="subpanel">
+              <div class="subpanel-head">
+                <h3>영구 강화</h3>
+                <span class="muted">강화석 사용</span>
+              </div>
+              <div id="stoneUpgrades" class="upgrade-list"></div>
+            </div>
+          </div>
+        </section>
       </div>
     </section>
   </main>
-
-  <div id="dropModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="dropTitle">
-    <div class="modal-card panel">
-      <div class="panel-heading">
-        <div>
-          <p class="eyebrow">Boss Drop</p>
-          <h2 id="dropTitle">새 총기 획득</h2>
-          <p id="dropSubtitle" class="muted">장착할 슬롯을 선택하거나 버릴 수 있습니다.</p>
-        </div>
-      </div>
-
-      <div id="dropGunCard" class="drop-gun-card"></div>
-      <div id="dropChoices" class="drop-choice-list"></div>
-      <div class="modal-actions">
-        <button id="discardDropButton" type="button" class="secondary-button">버리기</button>
-      </div>
-    </div>
-  </div>
 
   <script src="app.js"></script>
 </body>

@@ -672,6 +672,7 @@ const dom = {
   dropGunCard: document.getElementById("dropGunCard"),
   dropChoices: document.getElementById("dropChoices"),
   recommendedDropButton: document.getElementById("recommendedDropButton"),
+  autoEquipDropsButton: document.getElementById("autoEquipDropsButton"),
   discardDropButton: document.getElementById("discardDropButton"),
   forgeRelicButton: document.getElementById("forgeRelicButton"),
   relicForgeStatus: document.getElementById("relicForgeStatus"),
@@ -711,6 +712,7 @@ function initialize() {
   dom.detailTabs.addEventListener("click", handleDetailTabClick);
   dom.dropChoices.addEventListener("pointerdown", handleDropChoice);
   dom.recommendedDropButton?.addEventListener("click", equipRecommendedDrop);
+  dom.autoEquipDropsButton?.addEventListener("click", autoEquipPendingDrops);
   dom.discardDropButton.addEventListener("pointerdown", discardActiveDrop);
   dom.forgeRelicButton?.addEventListener("click", forgeRelic);
   if (dom.discardDropButton) {
@@ -1480,6 +1482,10 @@ function getRecommendedSlotForGun(gunRef) {
   };
 }
 
+function canUseRecommendedSlot(recommendation) {
+  return Boolean(recommendation && recommendation.delta >= 0);
+}
+
 function equipActiveDropToSlot(slotIndex) {
   if (!state.activeDrop || !Number.isInteger(slotIndex) || slotIndex < 0 || slotIndex >= state.player.equippedGunIds.length) {
     return false;
@@ -1542,11 +1548,42 @@ function equipRecommendedDrop(event) {
   }
 
   const recommendation = getRecommendedSlotForGun(state.activeDrop);
-  if (!recommendation) {
+  if (!canUseRecommendedSlot(recommendation)) {
     return;
   }
 
   equipActiveDropToSlot(recommendation.slotIndex);
+}
+
+function autoEquipPendingDrops(event) {
+  if (event?.preventDefault) {
+    event.preventDefault();
+  }
+
+  if (getPendingDropCount(state) <= 10) {
+    return;
+  }
+
+  let equippedCount = 0;
+  let dismantledCount = 0;
+
+  while (state.activeDrop) {
+    const recommendation = getRecommendedSlotForGun(state.activeDrop);
+    if (canUseRecommendedSlot(recommendation)) {
+      equipActiveDropToSlot(recommendation.slotIndex);
+      equippedCount += 1;
+      continue;
+    }
+
+    discardActiveDrop();
+    dismantledCount += 1;
+  }
+
+  addLog(
+    state,
+    `자동 장착 처리 완료. 장착 ${formatCompact(equippedCount)}정 / 해체 ${formatCompact(dismantledCount)}정`
+  );
+  saveGame(true);
 }
 
 function discardActiveDrop(event) {
@@ -2101,6 +2138,10 @@ function renderLoadoutWorkbench() {
       dom.recommendedDropButton.disabled = true;
       dom.recommendedDropButton.textContent = "추천 슬롯에 장착";
     }
+    if (dom.autoEquipDropsButton) {
+      dom.autoEquipDropsButton.disabled = true;
+      dom.autoEquipDropsButton.textContent = "자동 장착";
+    }
 
     if (renderCache.dropWorkbench !== emptyKey) {
       renderCache.dropWorkbench = emptyKey;
@@ -2115,6 +2156,8 @@ function renderLoadoutWorkbench() {
   const renderKey = `${getGunInstanceSignature(state.activeDrop)}|${state.activeDrop.stage}|${getLoadoutSignature(state.player.equippedGunIds)}|${queuedCount}`;
   const recommendation = getRecommendedSlotForGun(state.activeDrop);
   const hasPositiveRecommendation = Boolean(recommendation && recommendation.delta > 0);
+  const canEquipRecommendation = canUseRecommendedSlot(recommendation);
+  const canAutoEquipDrops = queuedCount > 10;
   dom.dropQueueCount.textContent = `대기 ${queuedCount}개`;
   dom.dropEmptyState.classList.add("hidden");
   dom.dropGunCard.classList.remove("hidden");
@@ -2123,10 +2166,16 @@ function renderLoadoutWorkbench() {
   dom.dropGunCard.style.cssText = getRarityCardStyle(state.activeDrop.tier ?? 0);
 
   if (dom.recommendedDropButton) {
-    dom.recommendedDropButton.disabled = !recommendation;
+    dom.recommendedDropButton.disabled = !canEquipRecommendation;
     dom.recommendedDropButton.textContent = recommendation
       ? `추천 슬롯 ${recommendation.slotIndex + 1}번에 장착`
       : "추천 슬롯에 장착";
+  }
+  if (dom.autoEquipDropsButton) {
+    dom.autoEquipDropsButton.disabled = !canAutoEquipDrops;
+    dom.autoEquipDropsButton.textContent = canAutoEquipDrops
+      ? `자동 장착 (${queuedCount})`
+      : "자동 장착";
   }
 
   if (renderCache.dropWorkbench === renderKey) {

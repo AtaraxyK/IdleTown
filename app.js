@@ -355,6 +355,123 @@ const GUN_CATALOG = [
 
 const GUN_BY_ID = Object.fromEntries(GUN_CATALOG.map((gun) => [gun.id, gun]));
 
+const GUN_RARITY_TIERS = [
+  {
+    tier: 0,
+    key: "common",
+    name: "일반",
+    shortLabel: "C",
+    color: "#b8c6d0",
+    background: "rgba(184, 198, 208, 0.14)",
+    borderColor: "rgba(184, 198, 208, 0.3)",
+    glow: "rgba(184, 198, 208, 0.12)",
+    dropWeight: 400
+  },
+  {
+    tier: 1,
+    key: "improved",
+    name: "개량",
+    shortLabel: "U",
+    color: "#8fe2a3",
+    background: "rgba(143, 226, 163, 0.14)",
+    borderColor: "rgba(143, 226, 163, 0.28)",
+    glow: "rgba(143, 226, 163, 0.14)",
+    dropWeight: 250
+  },
+  {
+    tier: 2,
+    key: "fine",
+    name: "고급",
+    shortLabel: "F",
+    color: "#7fe1d8",
+    background: "rgba(127, 225, 216, 0.14)",
+    borderColor: "rgba(127, 225, 216, 0.3)",
+    glow: "rgba(127, 225, 216, 0.14)",
+    dropWeight: 150
+  },
+  {
+    tier: 3,
+    key: "rare",
+    name: "희귀",
+    shortLabel: "R",
+    color: "#66b4ff",
+    background: "rgba(102, 180, 255, 0.15)",
+    borderColor: "rgba(102, 180, 255, 0.32)",
+    glow: "rgba(102, 180, 255, 0.18)",
+    dropWeight: 90
+  },
+  {
+    tier: 4,
+    key: "elite",
+    name: "정예",
+    shortLabel: "E",
+    color: "#8d85ff",
+    background: "rgba(141, 133, 255, 0.16)",
+    borderColor: "rgba(141, 133, 255, 0.34)",
+    glow: "rgba(141, 133, 255, 0.2)",
+    dropWeight: 50
+  },
+  {
+    tier: 5,
+    key: "heroic",
+    name: "영웅",
+    shortLabel: "H",
+    color: "#d179ff",
+    background: "rgba(209, 121, 255, 0.16)",
+    borderColor: "rgba(209, 121, 255, 0.36)",
+    glow: "rgba(209, 121, 255, 0.22)",
+    dropWeight: 25
+  },
+  {
+    tier: 6,
+    key: "epic",
+    name: "서사",
+    shortLabel: "EP",
+    color: "#ff88d5",
+    background: "rgba(255, 136, 213, 0.18)",
+    borderColor: "rgba(255, 136, 213, 0.38)",
+    glow: "rgba(255, 136, 213, 0.24)",
+    dropWeight: 12
+  },
+  {
+    tier: 7,
+    key: "legendary",
+    name: "전설",
+    shortLabel: "L",
+    color: "#ffb261",
+    background: "rgba(255, 178, 97, 0.18)",
+    borderColor: "rgba(255, 178, 97, 0.38)",
+    glow: "rgba(255, 178, 97, 0.26)",
+    dropWeight: 6
+  },
+  {
+    tier: 8,
+    key: "mythic",
+    name: "신화",
+    shortLabel: "M",
+    color: "#ff7f95",
+    background: "rgba(255, 127, 149, 0.18)",
+    borderColor: "rgba(255, 127, 149, 0.4)",
+    glow: "rgba(255, 127, 149, 0.28)",
+    dropWeight: 2
+  },
+  {
+    tier: 9,
+    key: "transcendent",
+    name: "초월",
+    shortLabel: "T",
+    color: "#ffe57d",
+    background: "rgba(255, 229, 125, 0.2)",
+    borderColor: "rgba(255, 229, 125, 0.42)",
+    glow: "rgba(255, 229, 125, 0.3)",
+    dropWeight: 1
+  }
+];
+
+const GUN_RARITY_BY_TIER = Object.fromEntries(
+  GUN_RARITY_TIERS.map((rarity) => [rarity.tier, rarity])
+);
+
 const TEMP_UPGRADE_CONFIG = [
   {
     key: "hp",
@@ -559,7 +676,7 @@ function createInitialState() {
         miniboss: 0,
         boss: 0
       },
-      equippedGunIds: ["basic-pistol"]
+      equippedGunIds: [createGunInstance("basic-pistol", 0)]
     },
     currentEnemy: null,
     gunCooldowns: [0],
@@ -629,13 +746,17 @@ function normalizeState(source) {
         ...source.player?.lifetimeKills
       },
       equippedGunIds: Array.isArray(source.player?.equippedGunIds)
-        ? source.player.equippedGunIds.filter((gunId) => gunId === null || GUN_BY_ID[gunId])
+        ? source.player.equippedGunIds
+            .map((gunEntry) => (gunEntry === null ? null : normalizeGunInstance(gunEntry)))
+            .filter((gunEntry) => gunEntry === null || gunEntry)
         : defaults.player.equippedGunIds
     },
     gunCooldowns: Array.isArray(source.gunCooldowns) ? source.gunCooldowns : defaults.gunCooldowns,
     logs: Array.isArray(source.logs) ? source.logs.slice(0, LOG_LIMIT) : defaults.logs,
-    pendingDrops: Array.isArray(source.pendingDrops) ? source.pendingDrops : [],
-    activeDrop: source.activeDrop && GUN_BY_ID[source.activeDrop.gunId] ? source.activeDrop : null,
+    pendingDrops: Array.isArray(source.pendingDrops)
+      ? source.pendingDrops.map(normalizeDropEntry).filter(Boolean)
+      : [],
+    activeDrop: normalizeDropEntry(source.activeDrop),
     offlineReport: source.offlineReport ?? null,
     lastSavedAt: typeof source.lastSavedAt === "number" ? source.lastSavedAt : Date.now(),
     lastAutoSaveAt: Date.now(),
@@ -685,7 +806,7 @@ function syncEquipment(gameState) {
   }
 
   if (!gameState.player.equippedGunIds.some(Boolean)) {
-    gameState.player.equippedGunIds[0] = "basic-pistol";
+    gameState.player.equippedGunIds[0] = createGunInstance("basic-pistol", 0);
   }
 }
 
@@ -722,12 +843,12 @@ function updateCombat(deltaSeconds) {
   syncEquipment(state);
 
   for (let slotIndex = 0; slotIndex < state.player.equippedGunIds.length; slotIndex += 1) {
-    const gunId = state.player.equippedGunIds[slotIndex];
-    if (!gunId) {
+    const equippedGun = state.player.equippedGunIds[slotIndex];
+    if (!equippedGun) {
       continue;
     }
 
-    const effectiveStats = getEffectiveGunStats(gunId);
+    const effectiveStats = getEffectiveGunStats(equippedGun);
     state.gunCooldowns[slotIndex] -= deltaSeconds;
 
     while (state.gunCooldowns[slotIndex] <= 0) {
@@ -847,16 +968,18 @@ function grantKillRewards(enemy, count, rewardRate) {
 }
 
 function queueGunDrop(stage) {
-  const gun = rollGunDrop(stage);
-  if (!gun) {
+  const droppedGun = rollGunDrop(stage);
+  if (!droppedGun) {
     return;
   }
 
   state.pendingDrops.push({
-    gunId: gun.id,
+    ...droppedGun,
     stage,
     obtainedAt: Date.now()
   });
+
+  const gun = { name: getGunLogLabel(droppedGun) };
 
   addLog(state, `보스 드랍 발생: ${gun.name} 획득`);
   openPendingDropIfNeeded();
@@ -878,17 +1001,13 @@ function rollGunDrop(stage) {
     return null;
   }
 
-  const totalWeight = available.reduce((sum, gun) => sum + gun.dropWeight, 0);
-  let roll = Math.random() * totalWeight;
-
-  for (const gun of available) {
-    roll -= gun.dropWeight;
-    if (roll <= 0) {
-      return gun;
-    }
+  const gun = rollWeightedChoice(available, "dropWeight");
+  const rarity = rollWeightedChoice(GUN_RARITY_TIERS, "dropWeight");
+  if (!gun || !rarity) {
+    return null;
   }
 
-  return available[available.length - 1];
+  return createGunInstance(gun.id, rarity.tier);
 }
 
 function toggleHaltMode() {
@@ -960,8 +1079,15 @@ function getSlotCount(gameState) {
   return 1 + gameState.player.tempUpgrades.slots + gameState.player.permanentUpgrades.slots;
 }
 
-function getEffectiveGunStats(gunId) {
-  const gun = GUN_BY_ID[gunId];
+function getEffectiveGunStats(gunRef) {
+  const gunInstance = normalizeGunInstance(gunRef);
+  if (!gunInstance) {
+    return null;
+  }
+
+  const gun = GUN_BY_ID[gunInstance.gunId];
+  const rarityMeta = getGunRarityMeta(gunInstance.tier);
+  const rarityMultiplier = getGunRarityMultiplier(gunInstance.tier);
   const tempGunBonus = state.player.tempUpgrades.gunDamage * 0.04;
   const permanentDamageBonus = state.player.permanentUpgrades.gunDamage * 0.025;
   const critChanceBonus =
@@ -976,16 +1102,24 @@ function getEffectiveGunStats(gunId) {
       state.player.tempUpgrades.attackSpeed * 0.008 -
       state.player.permanentUpgrades.attackSpeed * 0.004
   );
-  const effectiveAttackSpeed = Math.max(8, gun.attackSpeed * attackSpeedFactor);
+  const baseDamage = gun.damage * rarityMultiplier;
+  const baseCritChance = gun.critChance * rarityMultiplier;
+  const baseCritMultiplier = gun.critMultiplier * rarityMultiplier;
+  const baseAttackSpeed = gun.attackSpeed / rarityMultiplier;
+  const effectiveAttackSpeed = Math.max(8, baseAttackSpeed * attackSpeedFactor);
   const attackIntervalSeconds = effectiveAttackSpeed / 60;
-  const damage = Math.round(gun.damage * (1 + tempGunBonus + permanentDamageBonus));
-  const critChance = Math.min(10000, gun.critChance + critChanceBonus);
-  const critMultiplier = gun.critMultiplier + critDamageBonus;
+  const damage = Math.round(baseDamage * (1 + tempGunBonus + permanentDamageBonus));
+  const critChance = Math.min(10000, Math.round(baseCritChance + critChanceBonus));
+  const critMultiplier = Math.round((baseCritMultiplier + critDamageBonus) * 10) / 10;
   const expectedHit = damage * (1 + (critChance / 10000) * (critMultiplier / 100));
   const dps = expectedHit / attackIntervalSeconds;
 
   return {
     ...gun,
+    gunId: gun.id,
+    tier: gunInstance.tier,
+    rarityMeta,
+    rarityMultiplier,
     damage,
     critChance,
     critMultiplier,
@@ -997,11 +1131,13 @@ function getEffectiveGunStats(gunId) {
 }
 
 function getTotalExpectedDps() {
-  return state.player.equippedGunIds.reduce((sum, gunId) => {
-    if (!gunId) {
+  return state.player.equippedGunIds.reduce((sum, equippedGun) => {
+    if (!equippedGun) {
       return sum;
     }
-    return sum + getEffectiveGunStats(gunId).dps;
+
+    const stats = getEffectiveGunStats(equippedGun);
+    return stats ? sum + stats.dps : sum;
   }, 0);
 }
 
@@ -1130,10 +1266,11 @@ function handleDropChoice(event) {
   event.preventDefault();
 
   const slotIndex = Number(button.dataset.slotIndex);
-  const gunId = state.activeDrop.gunId;
-  const replaced = state.player.equippedGunIds[slotIndex];
+  const droppedGun = createGunInstance(state.activeDrop.gunId, state.activeDrop.tier ?? 0);
+  const gunId = droppedGun.gunId;
+  const replaced = state.player.equippedGunIds[slotIndex]?.gunId ?? state.player.equippedGunIds[slotIndex];
 
-  state.player.equippedGunIds[slotIndex] = gunId;
+  state.player.equippedGunIds[slotIndex] = droppedGun;
   state.gunCooldowns[slotIndex] = 0;
   addLog(
     state,
@@ -1241,7 +1378,7 @@ function renderTopCards() {
   const maxHp = getMaxHp(state);
   const totalDps = getTotalExpectedDps();
   const pendingStones = getPendingStoneRewards(state);
-  const pendingDropCount = state.pendingDrops.length + (state.activeDrop ? 1 : 0);
+  const pendingDropCount = getPendingDropCount(state);
 
   dom.combatStateChip.textContent = document.hidden
       ? "백그라운드 대기"
@@ -1342,8 +1479,8 @@ function renderGunSlots() {
   dom.slotSummary.textContent = `${slotCount} 슬롯`;
 
   const markup = state.player.equippedGunIds
-    .map((gunId, index) => {
-      if (!gunId) {
+    .map((equippedGun, index) => {
+      if (!equippedGun) {
         return `
           <article class="gun-card empty">
             <header>
@@ -1355,12 +1492,15 @@ function renderGunSlots() {
         `;
       }
 
-      const stats = getEffectiveGunStats(gunId);
+      const stats = getEffectiveGunStats(equippedGun);
       return `
-        <article class="gun-card">
+        <article class="gun-card" style="${getRarityCardStyle(stats.tier)}">
           <header>
             <h4>슬롯 ${index + 1} - ${stats.name}</h4>
-            <span class="badge">${stats.className}</span>
+            <div class="badge-cluster">
+              ${buildRarityBadgeMarkup(stats.tier)}
+              <span class="badge">${stats.className}</span>
+            </div>
           </header>
           <div class="gun-meta">
             <div>${stats.family} / ${stats.manufacturer}</div>
@@ -1490,7 +1630,7 @@ function handleDetailTabClick(event) {
 
 function renderDetailTabs() {
   const tabButtons = dom.detailTabs.querySelectorAll("button[data-tab]");
-  const hasPendingDrops = Boolean(state.activeDrop) || state.pendingDrops.length > 0;
+  const hasPendingDrops = getPendingDropCount(state) > 0;
   tabButtons.forEach((button) => {
     button.classList.toggle("is-active", button.dataset.tab === activeDetailTab);
   });
@@ -1510,7 +1650,7 @@ function renderDetailTabs() {
 }
 
 function renderLoadoutWorkbench() {
-  const queuedCount = state.activeDrop ? 1 + state.pendingDrops.length : 0;
+  const queuedCount = getPendingDropCount(state);
 
   if (!state.activeDrop) {
     const emptyKey = "empty";
@@ -1519,6 +1659,7 @@ function renderLoadoutWorkbench() {
     dom.dropGunCard.classList.add("hidden");
     dom.dropChoices.classList.add("hidden");
     dom.dropActionBar.classList.add("hidden");
+    dom.dropGunCard.style.cssText = "";
 
     if (renderCache.dropWorkbench !== emptyKey) {
       renderCache.dropWorkbench = emptyKey;
@@ -1529,13 +1670,14 @@ function renderLoadoutWorkbench() {
   }
 
   const gun = GUN_BY_ID[state.activeDrop.gunId];
-  const stats = getEffectiveGunStats(gun.id);
-  const renderKey = `${state.activeDrop.gunId}|${state.activeDrop.stage}|${state.player.equippedGunIds.join(",")}|${queuedCount}`;
+  const stats = getEffectiveGunStats(state.activeDrop);
+  const renderKey = `${getGunInstanceSignature(state.activeDrop)}|${state.activeDrop.stage}|${getLoadoutSignature(state.player.equippedGunIds)}|${queuedCount}`;
   dom.dropQueueCount.textContent = `대기 ${queuedCount}개`;
   dom.dropEmptyState.classList.add("hidden");
   dom.dropGunCard.classList.remove("hidden");
   dom.dropChoices.classList.remove("hidden");
   dom.dropActionBar.classList.remove("hidden");
+  dom.dropGunCard.style.cssText = getRarityCardStyle(state.activeDrop.tier ?? 0);
 
   if (renderCache.dropWorkbench === renderKey) {
     return;
@@ -1544,11 +1686,17 @@ function renderLoadoutWorkbench() {
   renderCache.dropWorkbench = renderKey;
   dom.dropGunCard.innerHTML = `
     <header>
-      <h4>${gun.name}</h4>
-      <span class="badge">${gun.className} / ${gun.rarity}</span>
+      <div class="title-stack">
+        <h4>${gun.name}</h4>
+        <div class="muted">${gun.family} / ${gun.manufacturer}</div>
+      </div>
+      <div class="badge-cluster">
+        ${buildRarityBadgeMarkup(stats.tier)}
+        <span class="badge">${gun.className}</span>
+      </div>
     </header>
-    <div>${gun.family} / ${gun.manufacturer}</div>
     <div class="muted">${gun.description}</div>
+    <div class="stat-line"><span>등급 보정</span><strong>${stats.tier === 0 ? "기본 수치" : `+${Math.round((stats.rarityMultiplier - 1) * 100)}%`}</strong></div>
     <div class="stat-line"><span>획득 위치</span><strong>스테이지 ${state.activeDrop.stage} 보스</strong></div>
     <div class="stat-line"><span>공격력</span><strong>${formatCompact(stats.damage)}</strong></div>
     <div class="stat-line"><span>공격 속도</span><strong>${stats.attackSpeed.toFixed(1)}</strong></div>
@@ -1558,8 +1706,9 @@ function renderLoadoutWorkbench() {
   `;
 
   dom.dropChoices.innerHTML = state.player.equippedGunIds
-    .map((gunId, index) => {
-      const equippedStats = gunId ? getEffectiveGunStats(gunId) : null;
+    .map((equippedGun, index) => {
+      const gunId = equippedGun?.gunId ?? null;
+      const equippedStats = equippedGun ? getEffectiveGunStats(equippedGun) : null;
       const delta = equippedStats ? stats.dps - equippedStats.dps : stats.dps;
       const deltaClass = delta >= 0 ? "good" : "bad";
 
@@ -1569,6 +1718,9 @@ function renderLoadoutWorkbench() {
             <h4>슬롯 ${index + 1}</h4>
             <span class="badge">${gunId ? GUN_BY_ID[gunId].name : "빈 슬롯"}</span>
           </header>
+          <div class="inline-rarity">
+            ${equippedGun ? buildRarityBadgeMarkup(equippedGun.tier) : `<span class="badge">빈 슬롯</span>`}
+          </div>
           <div class="muted">
             ${
               equippedStats
@@ -1601,6 +1753,112 @@ function addLog(gameState, text) {
   if (gameState.logs.length > LOG_LIMIT) {
     gameState.logs.length = LOG_LIMIT;
   }
+}
+
+function createGunInstance(gunId, tier = 0) {
+  if (!GUN_BY_ID[gunId]) {
+    return null;
+  }
+
+  return {
+    gunId,
+    tier: clamp(Math.round(Number(tier) || 0), 0, GUN_RARITY_TIERS.length - 1)
+  };
+}
+
+function normalizeGunInstance(value) {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  if (typeof value === "string") {
+    return createGunInstance(value, 0);
+  }
+
+  if (typeof value === "object") {
+    return createGunInstance(value.gunId, value.tier ?? 0);
+  }
+
+  return null;
+}
+
+function normalizeDropEntry(entry) {
+  const normalizedGun = normalizeGunInstance(entry);
+  if (!normalizedGun) {
+    return null;
+  }
+
+  return {
+    ...normalizedGun,
+    stage: Math.max(1, Math.round(Number(entry?.stage) || 1)),
+    obtainedAt: typeof entry?.obtainedAt === "number" ? entry.obtainedAt : Date.now()
+  };
+}
+
+function getGunRarityMeta(tier) {
+  return GUN_RARITY_BY_TIER[clamp(Math.round(Number(tier) || 0), 0, GUN_RARITY_TIERS.length - 1)] ?? GUN_RARITY_TIERS[0];
+}
+
+function getGunRarityMultiplier(tier) {
+  return 1 + getGunRarityMeta(tier).tier * 0.1;
+}
+
+function getPendingDropCount(gameState) {
+  return gameState.pendingDrops.length + (gameState.activeDrop ? 1 : 0);
+}
+
+function getGunInstanceSignature(gunRef) {
+  const gun = normalizeGunInstance(gunRef);
+  return gun ? `${gun.gunId}@${gun.tier}` : "empty";
+}
+
+function getLoadoutSignature(loadout) {
+  return loadout.map((gunRef) => getGunInstanceSignature(gunRef)).join(",");
+}
+
+function getGunLogLabel(gunRef) {
+  const gun = normalizeGunInstance(gunRef);
+  if (!gun) {
+    return "빈 슬롯";
+  }
+
+  const baseGun = GUN_BY_ID[gun.gunId];
+  const rarity = getGunRarityMeta(gun.tier);
+  return `[${rarity.shortLabel}] ${baseGun.name}`;
+}
+
+function buildRarityBadgeMarkup(tier) {
+  const rarity = getGunRarityMeta(tier);
+  return `<span class="badge rarity-badge" style="color: ${rarity.color}; border-color: ${rarity.borderColor}; background: ${rarity.background};">${rarity.shortLabel} ${rarity.name}</span>`;
+}
+
+function getRarityCardStyle(tier) {
+  const rarity = getGunRarityMeta(tier);
+  return `border-color: ${rarity.borderColor}; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03), 0 18px 28px ${rarity.glow};`;
+}
+
+function rollWeightedChoice(items, weightKey) {
+  if (!Array.isArray(items) || items.length === 0) {
+    return null;
+  }
+
+  const totalWeight = items.reduce(
+    (sum, item) => sum + Math.max(0, Number(item?.[weightKey]) || 0),
+    0
+  );
+  if (totalWeight <= 0) {
+    return items[items.length - 1] ?? null;
+  }
+
+  let roll = Math.random() * totalWeight;
+  for (const item of items) {
+    roll -= Math.max(0, Number(item?.[weightKey]) || 0);
+    if (roll <= 0) {
+      return item;
+    }
+  }
+
+  return items[items.length - 1];
 }
 
 function getEnemyGlyph(enemyType) {

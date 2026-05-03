@@ -389,6 +389,23 @@ button:disabled {
   font-weight: 700;
 }
 
+.badge-cluster {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.title-stack {
+  display: grid;
+  gap: 6px;
+}
+
+.rarity-badge {
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
 .health-stack {
   display: grid;
   gap: 14px;
@@ -656,9 +673,21 @@ button:disabled {
 
 .drop-gun-card {
   padding: 18px;
-  background: rgba(118, 225, 255, 0.08);
-  border: 1px solid rgba(118, 225, 255, 0.18);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.03));
+  border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: var(--radius-small);
+}
+
+.drop-gun-card header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.inline-rarity {
+  display: flex;
+  justify-content: flex-start;
 }
 
 .delta.good {

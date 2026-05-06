@@ -353,7 +353,86 @@ const GUN_CATALOG = [
   }
 ];
 
-const GUN_BY_ID = Object.fromEntries(GUN_CATALOG.map((gun) => [gun.id, gun]));
+const GUN_ELEMENT_META = {
+  fire: {
+    key: "fire",
+    label: "불 속성",
+    shortLabel: "FIR",
+    color: "#ff9567",
+    background: "rgba(255, 149, 103, 0.16)",
+    borderColor: "rgba(255, 149, 103, 0.28)",
+    description: "공격력 +12%"
+  },
+  ice: {
+    key: "ice",
+    label: "얼음 속성",
+    shortLabel: "ICE",
+    color: "#7ad7ff",
+    background: "rgba(122, 215, 255, 0.16)",
+    borderColor: "rgba(122, 215, 255, 0.28)",
+    description: "공격 템포 +12%"
+  },
+  light: {
+    key: "light",
+    label: "빛 속성",
+    shortLabel: "LGT",
+    color: "#ffe38a",
+    background: "rgba(255, 227, 138, 0.16)",
+    borderColor: "rgba(255, 227, 138, 0.28)",
+    description: "치명타 확률 +7%"
+  },
+  dark: {
+    key: "dark",
+    label: "어둠 속성",
+    shortLabel: "DRK",
+    color: "#d09cff",
+    background: "rgba(208, 156, 255, 0.16)",
+    borderColor: "rgba(208, 156, 255, 0.28)",
+    description: "치명타 피해 +45%"
+  }
+};
+
+const GUN_TYPE_META = {
+  sidearm: { key: "sidearm", label: "권총 계열", shortLabel: "HG" },
+  smg: { key: "smg", label: "기관단총 계열", shortLabel: "SMG" },
+  shotgun: { key: "shotgun", label: "산탄총 계열", shortLabel: "SG" },
+  rifle: { key: "rifle", label: "소총 계열", shortLabel: "AR" },
+  marksman: { key: "marksman", label: "정밀화기 계열", shortLabel: "MR" },
+  support: { key: "support", label: "지원화기 계열", shortLabel: "SUP" }
+};
+
+const GUN_TRAITS = {
+  "basic-pistol": { elementKey: "light", typeKey: "sidearm" },
+  "m9-service": { elementKey: "fire", typeKey: "sidearm" },
+  "g17-polymer": { elementKey: "ice", typeKey: "sidearm" },
+  "python-357": { elementKey: "dark", typeKey: "sidearm" },
+  "deagle-50": { elementKey: "fire", typeKey: "sidearm" },
+  mp5k: { elementKey: "ice", typeKey: "smg" },
+  "ump-45": { elementKey: "dark", typeKey: "smg" },
+  p90: { elementKey: "ice", typeKey: "smg" },
+  "vector-45": { elementKey: "dark", typeKey: "smg" },
+  m870: { elementKey: "fire", typeKey: "shotgun" },
+  "saiga-12": { elementKey: "ice", typeKey: "shotgun" },
+  aa12: { elementKey: "fire", typeKey: "shotgun" },
+  m4a1: { elementKey: "light", typeKey: "rifle" },
+  "ak-47": { elementKey: "fire", typeKey: "rifle" },
+  "famas-f1": { elementKey: "ice", typeKey: "rifle" },
+  "scar-l": { elementKey: "light", typeKey: "rifle" },
+  g3a3: { elementKey: "dark", typeKey: "rifle" },
+  "mk14-ebr": { elementKey: "dark", typeKey: "marksman" },
+  m110: { elementKey: "light", typeKey: "marksman" },
+  m249: { elementKey: "ice", typeKey: "support" },
+  "pkp-pecheneg": { elementKey: "fire", typeKey: "support" },
+  r700: { elementKey: "light", typeKey: "marksman" },
+  awm: { elementKey: "dark", typeKey: "marksman" }
+};
+
+const GUN_BY_ID = Object.fromEntries(
+  GUN_CATALOG.map((gun) => [
+    gun.id,
+    { ...gun, typeKey: "rifle", elementKey: "fire", ...(GUN_TRAITS[gun.id] ?? {}) }
+  ])
+);
 
 const GUN_RARITY_TIERS = [
   {
@@ -658,6 +737,7 @@ const dom = {
   offlineReport: document.getElementById("offlineReport"),
   battleLog: document.getElementById("battleLog"),
   playerStats: document.getElementById("playerStats"),
+  loadoutOverview: document.getElementById("loadoutOverview"),
   gunSlots: document.getElementById("gunSlots"),
   loadoutTabButton: document.getElementById("loadoutTabButton"),
   loadoutTabAlert: document.getElementById("loadoutTabAlert"),
@@ -687,6 +767,7 @@ let hiddenStartedAt = null;
 let activeDetailTab = "combat";
 const renderCache = {
   stats: "",
+  loadoutOverview: "",
   gunSlots: "",
   tempUpgrades: "",
   stoneUpgrades: "",
@@ -1190,15 +1271,71 @@ function getSlotCount(gameState) {
   return 1 + gameState.player.tempUpgrades.slots + gameState.player.permanentUpgrades.slots;
 }
 
-function getEffectiveGunStats(gunRef) {
+function getElementMeta(elementKey) {
+  return GUN_ELEMENT_META[elementKey] ?? GUN_ELEMENT_META.fire;
+}
+
+function getWeaponTypeMeta(typeKey) {
+  return GUN_TYPE_META[typeKey] ?? GUN_TYPE_META.rifle;
+}
+
+function getWeaponTypeSynergyBonus(count) {
+  return count >= 2 ? 0.06 + Math.max(0, count - 2) * 0.03 : 0;
+}
+
+function getLoadoutContext(loadout = state.player.equippedGunIds) {
+  const typeCounts = {};
+  const elementCounts = {};
+
+  for (const gunRef of loadout) {
+    const gun = normalizeGunInstance(gunRef);
+    if (!gun) {
+      continue;
+    }
+
+    const baseGun = GUN_BY_ID[gun.gunId];
+    if (!baseGun) {
+      continue;
+    }
+
+    typeCounts[baseGun.typeKey] = (typeCounts[baseGun.typeKey] ?? 0) + 1;
+    elementCounts[baseGun.elementKey] = (elementCounts[baseGun.elementKey] ?? 0) + 1;
+  }
+
+  const activeSynergies = Object.entries(typeCounts)
+    .map(([typeKey, count]) => ({
+      typeKey,
+      count,
+      typeMeta: getWeaponTypeMeta(typeKey),
+      bonus: getWeaponTypeSynergyBonus(count)
+    }))
+    .filter((entry) => entry.bonus > 0)
+    .sort((left, right) => right.bonus - left.bonus || right.count - left.count);
+
+  return {
+    typeCounts,
+    elementCounts,
+    activeSynergies
+  };
+}
+
+function getEffectiveGunStats(gunRef, loadout = state.player.equippedGunIds) {
   const gunInstance = normalizeGunInstance(gunRef);
   if (!gunInstance) {
     return null;
   }
 
   const gun = GUN_BY_ID[gunInstance.gunId];
+  const loadoutContext = getLoadoutContext(loadout);
   const rarityMeta = getGunRarityMeta(gunInstance.tier);
   const rarityMultiplier = getGunRarityMultiplier(gunInstance.tier);
+  const typeMeta = getWeaponTypeMeta(gun.typeKey);
+  const elementMeta = getElementMeta(gun.elementKey);
+  const synergyDamageBonus = getWeaponTypeSynergyBonus(loadoutContext.typeCounts[gun.typeKey] ?? 0);
+  const elementDamageBonus = gun.elementKey === "fire" ? 0.12 : 0;
+  const elementAttackSpeedReduction = gun.elementKey === "ice" ? 0.12 : 0;
+  const elementCritChanceBonus = gun.elementKey === "light" ? 700 : 0;
+  const elementCritDamageBonus = gun.elementKey === "dark" ? 45 : 0;
   const tempGunBonus = state.player.tempUpgrades.gunDamage * 0.04;
   const permanentDamageBonus =
     state.player.permanentUpgrades.gunDamage * 0.025 +
@@ -1212,11 +1349,12 @@ function getEffectiveGunStats(gunRef) {
     state.player.permanentUpgrades.critDamage * 2.5 +
     getRelicEffectTotal(state, "critDamageFlat");
   const attackSpeedFactor = Math.max(
-    0.55,
+    0.4,
     1 -
       state.player.tempUpgrades.attackSpeed * 0.008 -
       state.player.permanentUpgrades.attackSpeed * 0.004 -
-      getRelicEffectTotal(state, "attackSpeedReduction")
+      getRelicEffectTotal(state, "attackSpeedReduction") -
+      elementAttackSpeedReduction
   );
   const baseDamage = gun.damage * rarityMultiplier;
   const baseCritChance = gun.critChance * rarityMultiplier;
@@ -1224,9 +1362,13 @@ function getEffectiveGunStats(gunRef) {
   const baseAttackSpeed = gun.attackSpeed / rarityMultiplier;
   const effectiveAttackSpeed = Math.max(8, baseAttackSpeed * attackSpeedFactor);
   const attackIntervalSeconds = effectiveAttackSpeed / 60;
-  const damage = Math.round(baseDamage * (1 + tempGunBonus + permanentDamageBonus));
-  const critChance = Math.min(10000, Math.round(baseCritChance + critChanceBonus));
-  const critMultiplier = Math.round((baseCritMultiplier + critDamageBonus) * 10) / 10;
+  const damage = Math.round(
+    baseDamage * (1 + tempGunBonus + permanentDamageBonus + elementDamageBonus + synergyDamageBonus)
+  );
+  const critChance = Math.min(10000, Math.round(baseCritChance + critChanceBonus + elementCritChanceBonus));
+  const critMultiplier = Math.round(
+    (baseCritMultiplier + critDamageBonus + elementCritDamageBonus) * 10
+  ) / 10;
   const expectedHit = damage * (1 + (critChance / 10000) * (critMultiplier / 100));
   const dps = expectedHit / attackIntervalSeconds;
 
@@ -1234,8 +1376,13 @@ function getEffectiveGunStats(gunRef) {
     ...gun,
     gunId: gun.id,
     tier: gunInstance.tier,
+    typeKey: gun.typeKey,
+    typeMeta,
+    elementKey: gun.elementKey,
+    elementMeta,
     rarityMeta,
     rarityMultiplier,
+    synergyDamageBonus,
     damage,
     critChance,
     critMultiplier,
@@ -1246,13 +1393,13 @@ function getEffectiveGunStats(gunRef) {
   };
 }
 
-function getTotalExpectedDps() {
-  return state.player.equippedGunIds.reduce((sum, equippedGun) => {
+function getTotalExpectedDps(loadout = state.player.equippedGunIds) {
+  return loadout.reduce((sum, equippedGun) => {
     if (!equippedGun) {
       return sum;
     }
 
-    const stats = getEffectiveGunStats(equippedGun);
+    const stats = getEffectiveGunStats(equippedGun, loadout);
     return stats ? sum + stats.dps : sum;
   }, 0);
 }
@@ -1457,18 +1604,20 @@ function getMaxAffordableUpgradePurchase(config, startingLevel, budget) {
 }
 
 function getRecommendedSlotForGun(gunRef) {
-  const candidateStats = getEffectiveGunStats(gunRef);
-  if (!candidateStats || state.player.equippedGunIds.length === 0) {
+  const candidateGun = normalizeGunInstance(gunRef);
+  const loadout = state.player.equippedGunIds.slice();
+  if (!candidateGun || loadout.length === 0) {
     return null;
   }
 
+  const baselineDps = getTotalExpectedDps(loadout);
   let bestSlotIndex = 0;
   let bestDelta = Number.NEGATIVE_INFINITY;
 
-  for (let slotIndex = 0; slotIndex < state.player.equippedGunIds.length; slotIndex += 1) {
-    const equippedGun = state.player.equippedGunIds[slotIndex];
-    const equippedStats = equippedGun ? getEffectiveGunStats(equippedGun) : null;
-    const delta = equippedStats ? candidateStats.dps - equippedStats.dps : candidateStats.dps;
+  for (let slotIndex = 0; slotIndex < loadout.length; slotIndex += 1) {
+    const nextLoadout = loadout.slice();
+    nextLoadout[slotIndex] = createGunInstance(candidateGun.gunId, candidateGun.tier);
+    const delta = getTotalExpectedDps(nextLoadout) - baselineDps;
 
     if (delta > bestDelta) {
       bestDelta = delta;
@@ -1484,6 +1633,18 @@ function getRecommendedSlotForGun(gunRef) {
 
 function canUseRecommendedSlot(recommendation) {
   return Boolean(recommendation && recommendation.delta >= 0);
+}
+
+function getCandidateLoadoutDpsDelta(slotIndex, gunRef, loadout = state.player.equippedGunIds, baselineDps = null) {
+  const candidateGun = normalizeGunInstance(gunRef);
+  if (!candidateGun || !Number.isInteger(slotIndex) || slotIndex < 0 || slotIndex >= loadout.length) {
+    return Number.NEGATIVE_INFINITY;
+  }
+
+  const nextLoadout = loadout.slice();
+  nextLoadout[slotIndex] = createGunInstance(candidateGun.gunId, candidateGun.tier);
+  const currentDps = baselineDps ?? getTotalExpectedDps(loadout);
+  return getTotalExpectedDps(nextLoadout) - currentDps;
 }
 
 function equipActiveDropToSlot(slotIndex) {
@@ -1689,6 +1850,7 @@ function renderTopCards() {
   const totalDps = getTotalExpectedDps();
   const pendingStones = getPendingStoneRewards(state);
   const pendingDropCount = getPendingDropCount(state);
+  const loadoutContext = getLoadoutContext();
 
   dom.combatStateChip.textContent = document.hidden
       ? "백그라운드 대기"
@@ -1711,7 +1873,7 @@ function renderTopCards() {
   dom.shardValue.textContent = formatCompact(state.player.gunShards);
   dom.stoneForecast.textContent = `환생 시 +${formatCompact(pendingStones)} 예상`;
   dom.dpsValue.textContent = `${formatCompact(totalDps)} DPS`;
-  dom.runSummary.textContent = `총기 ${state.player.equippedGunIds.filter(Boolean).length}정 / 유물 ${getDiscoveredRelicCount(state)}종`;
+  dom.runSummary.textContent = `총기 ${state.player.equippedGunIds.filter(Boolean).length}정 / 시너지 ${loadoutContext.activeSynergies.length}개 / 유물 ${getDiscoveredRelicCount(state)}종`;
 }
 
 function renderArena() {
@@ -2238,6 +2400,286 @@ function renderLoadoutWorkbench() {
     .join("");
 }
 
+function renderTopCards() {
+  const maxHp = getMaxHp(state);
+  const totalDps = getTotalExpectedDps();
+  const pendingStones = getPendingStoneRewards(state);
+  const pendingDropCount = getPendingDropCount(state);
+  const loadoutContext = getLoadoutContext();
+
+  dom.combatStateChip.textContent = document.hidden
+    ? "백그라운드 대기"
+    : pendingDropCount > 0
+      ? `실시간 전투 중 / 드랍 ${pendingDropCount}개 대기`
+      : "실시간 전투 중";
+  dom.haltStateChip.textContent =
+    state.player.haltedStage === null
+      ? "스테이지 자동 진행"
+      : `스테이지 ${state.player.haltedStage} 고정 방어`;
+
+  dom.heroHpValue.textContent = `${formatCompact(state.player.hp)} / ${formatCompact(maxHp)}`;
+  dom.heroHpMeta.textContent =
+    state.player.haltedStage === null
+      ? "사망 시 직전 단계 하락 후 회복"
+      : "사망 후 고정 스테이지 방어 중";
+  dom.stageValue.textContent = `${state.player.stage} - ${state.player.enemyNumber} / 10`;
+  dom.trophyValue.textContent = formatCompact(state.player.trophies);
+  dom.stoneValue.textContent = formatCompact(state.player.stones);
+  dom.shardValue.textContent = formatCompact(state.player.gunShards);
+  dom.stoneForecast.textContent = `환생 시 +${formatCompact(pendingStones)} 예상`;
+  dom.dpsValue.textContent = `${formatCompact(totalDps)} DPS`;
+  dom.runSummary.textContent = `총기 ${state.player.equippedGunIds.filter(Boolean).length}정 / 시너지 ${loadoutContext.activeSynergies.length}개 / 유물 ${getDiscoveredRelicCount(state)}종`;
+}
+
+function renderGunSlots() {
+  const slotCount = getSlotCount(state);
+  const loadout = state.player.equippedGunIds.slice();
+  const loadoutContext = getLoadoutContext(loadout);
+  const equippedCount = loadout.filter(Boolean).length;
+  const totalDps = getTotalExpectedDps(loadout);
+
+  dom.slotSummary.textContent = `${slotCount} 슬롯 / 시너지 ${loadoutContext.activeSynergies.length}개`;
+
+  const overviewMarkup = `
+    <div class="overview-pill-row">
+      <article class="overview-pill">
+        <span>총 장착 DPS</span>
+        <strong>${formatCompact(totalDps)}</strong>
+      </article>
+      <article class="overview-pill">
+        <span>장착 수</span>
+        <strong>${equippedCount} / ${slotCount}</strong>
+      </article>
+      <article class="overview-pill">
+        <span>활성 시너지</span>
+        <strong>${loadoutContext.activeSynergies.length}개</strong>
+      </article>
+    </div>
+    <div class="overview-row">
+      <span class="overview-label">속성 분포</span>
+      <div class="overview-chip-row">
+        ${Object.values(GUN_ELEMENT_META)
+          .map((meta) => {
+            const count = loadoutContext.elementCounts[meta.key] ?? 0;
+            return `<span class="badge element-badge" style="color: ${meta.color}; border-color: ${meta.borderColor}; background: ${meta.background};">${meta.shortLabel} ${count}정</span>`;
+          })
+          .join("")}
+      </div>
+    </div>
+    <div class="overview-row">
+      <span class="overview-label">계열 시너지</span>
+      <div class="overview-chip-row">
+        ${
+          loadoutContext.activeSynergies.length > 0
+            ? loadoutContext.activeSynergies
+                .map(
+                  (entry) =>
+                    `<span class="badge synergy-badge">${entry.typeMeta.shortLabel} ${entry.count}정 / 공격력 ${formatRatePercent(entry.bonus)}</span>`
+                )
+                .join("")
+            : '<span class="badge">활성 시너지 없음</span>'
+        }
+      </div>
+    </div>
+  `;
+
+  if (renderCache.loadoutOverview !== overviewMarkup) {
+    renderCache.loadoutOverview = overviewMarkup;
+    dom.loadoutOverview.innerHTML = overviewMarkup;
+  }
+
+  const markup = loadout
+    .map((equippedGun, index) => {
+      if (!equippedGun) {
+        return `
+          <article class="gun-card compact empty">
+            <header class="gun-card-head">
+              <div class="title-stack">
+                <span class="slot-kicker">슬롯 ${index + 1}</span>
+                <h4>빈 슬롯</h4>
+              </div>
+              <span class="gun-dps-pill empty">EMPTY</span>
+            </header>
+            <div class="gun-meta-line">보스 드랍 총기를 장착하면 즉시 전투에 투입됩니다.</div>
+          </article>
+        `;
+      }
+
+      const stats = getEffectiveGunStats(equippedGun, loadout);
+      const synergyText =
+        stats.synergyDamageBonus > 0
+          ? `${stats.typeMeta.label} +${Math.round(stats.synergyDamageBonus * 100)}%`
+          : `${stats.typeMeta.label} 단독`;
+
+      return `
+        <article class="gun-card compact" style="${getRarityCardStyle(stats.tier)}">
+          <header class="gun-card-head">
+            <div class="title-stack">
+              <span class="slot-kicker">슬롯 ${index + 1}</span>
+              <h4>${stats.name}</h4>
+              <div class="gun-meta-line">${stats.family} / ${stats.manufacturer}</div>
+            </div>
+            <span class="gun-dps-pill">${formatCompact(stats.dps)} DPS</span>
+          </header>
+          <div class="badge-cluster gun-badge-row">
+            ${buildRarityBadgeMarkup(stats.tier)}
+            ${buildWeaponTypeBadgeMarkup(stats.typeKey)}
+            ${buildElementBadgeMarkup(stats.elementKey)}
+            <span class="badge synergy-badge">${synergyText}</span>
+          </div>
+          <div class="mini-stat-grid">
+            <div class="mini-stat"><span>공격력</span><strong>${formatCompact(stats.damage)}</strong></div>
+            <div class="mini-stat"><span>공격 템포</span><strong>${stats.attackSpeed.toFixed(1)}</strong></div>
+            <div class="mini-stat"><span>치확</span><strong>${formatChance(stats.critChance)}</strong></div>
+            <div class="mini-stat"><span>치피</span><strong>+${stats.critMultiplier.toFixed(0)}%</strong></div>
+          </div>
+          <div class="gun-effect-line">${stats.elementMeta.label} ${stats.elementMeta.description}</div>
+        </article>
+      `;
+    })
+    .join("");
+
+  if (renderCache.gunSlots !== markup) {
+    renderCache.gunSlots = markup;
+    dom.gunSlots.innerHTML = markup;
+  }
+}
+
+function renderLoadoutWorkbench() {
+  const queuedCount = getPendingDropCount(state);
+
+  if (!state.activeDrop) {
+    const emptyKey = "empty";
+    dom.dropQueueCount.textContent = "드랍된 아이템 없음";
+    dom.dropEmptyState.classList.remove("hidden");
+    dom.dropGunCard.classList.add("hidden");
+    dom.dropChoices.classList.add("hidden");
+    dom.dropActionBar.classList.add("hidden");
+    dom.dropGunCard.style.cssText = "";
+
+    if (dom.recommendedDropButton) {
+      dom.recommendedDropButton.disabled = true;
+      dom.recommendedDropButton.textContent = "추천 슬롯에 장착";
+    }
+    if (dom.autoEquipDropsButton) {
+      dom.autoEquipDropsButton.disabled = true;
+      dom.autoEquipDropsButton.textContent = "자동 장착";
+    }
+
+    if (renderCache.dropWorkbench !== emptyKey) {
+      renderCache.dropWorkbench = emptyKey;
+      dom.dropGunCard.innerHTML = "";
+      dom.dropChoices.innerHTML = "";
+    }
+    return;
+  }
+
+  const loadout = state.player.equippedGunIds.slice();
+  const baselineDps = getTotalExpectedDps(loadout);
+  const recommendation = getRecommendedSlotForGun(state.activeDrop);
+  const hasPositiveRecommendation = Boolean(recommendation && recommendation.delta > 0);
+  const canEquipRecommendation = canUseRecommendedSlot(recommendation);
+  const canAutoEquipDrops = queuedCount > 10;
+  const previewSlotIndex = recommendation?.slotIndex ?? 0;
+  const previewLoadout = loadout.slice();
+  previewLoadout[previewSlotIndex] = createGunInstance(state.activeDrop.gunId, state.activeDrop.tier ?? 0);
+
+  const gun = GUN_BY_ID[state.activeDrop.gunId];
+  const stats = getEffectiveGunStats(state.activeDrop, previewLoadout);
+  const previewContext = getLoadoutContext(previewLoadout);
+  const previewTypeCount = previewContext.typeCounts[gun.typeKey] ?? 1;
+  const previewSynergyBonus = getWeaponTypeSynergyBonus(previewTypeCount);
+  const renderKey = `${getGunInstanceSignature(state.activeDrop)}|${state.activeDrop.stage}|${getLoadoutSignature(loadout)}|${queuedCount}|${previewSlotIndex}|${canEquipRecommendation}`;
+
+  dom.dropQueueCount.textContent = `대기 ${queuedCount}개`;
+  dom.dropEmptyState.classList.add("hidden");
+  dom.dropGunCard.classList.remove("hidden");
+  dom.dropChoices.classList.remove("hidden");
+  dom.dropActionBar.classList.remove("hidden");
+  dom.dropGunCard.style.cssText = getRarityCardStyle(state.activeDrop.tier ?? 0);
+
+  if (dom.recommendedDropButton) {
+    dom.recommendedDropButton.disabled = !canEquipRecommendation;
+    dom.recommendedDropButton.textContent = recommendation
+      ? `추천 슬롯 ${recommendation.slotIndex + 1}번에 장착`
+      : "추천 슬롯에 장착";
+  }
+  if (dom.autoEquipDropsButton) {
+    dom.autoEquipDropsButton.disabled = !canAutoEquipDrops;
+    dom.autoEquipDropsButton.textContent = canAutoEquipDrops
+      ? `자동 장착 (${queuedCount})`
+      : "자동 장착";
+  }
+
+  if (renderCache.dropWorkbench === renderKey) {
+    return;
+  }
+
+  renderCache.dropWorkbench = renderKey;
+  dom.dropGunCard.innerHTML = `
+    <header>
+      <div class="title-stack">
+        <h4>${gun.name}</h4>
+        <div class="gun-meta-line">${gun.family} / ${gun.manufacturer}</div>
+      </div>
+      <div class="badge-cluster">
+        ${buildRarityBadgeMarkup(stats.tier)}
+        ${buildWeaponTypeBadgeMarkup(stats.typeKey)}
+        ${buildElementBadgeMarkup(stats.elementKey)}
+      </div>
+    </header>
+    <div class="gun-effect-line">${stats.elementMeta.label} ${stats.elementMeta.description}</div>
+    <div class="gun-effect-line">${stats.typeMeta.label} ${previewTypeCount}정 / 같은 계열 공격력 ${formatRatePercent(previewSynergyBonus)}</div>
+    <div class="mini-stat-grid">
+      <div class="mini-stat"><span>공격력</span><strong>${formatCompact(stats.damage)}</strong></div>
+      <div class="mini-stat"><span>공격 템포</span><strong>${stats.attackSpeed.toFixed(1)}</strong></div>
+      <div class="mini-stat"><span>치확</span><strong>${formatChance(stats.critChance)}</strong></div>
+      <div class="mini-stat"><span>치피</span><strong>+${stats.critMultiplier.toFixed(1)}%</strong></div>
+    </div>
+    <div class="stat-line"><span>예상 기대 DPS</span><strong>${formatCompact(stats.dps)}</strong></div>
+    <div class="stat-line"><span>추천 교체</span><strong>${recommendation ? `${recommendation.slotIndex + 1}번 / ${recommendation.delta >= 0 ? "+" : ""}${formatCompact(recommendation.delta)} 총 DPS` : "계산 중"}</strong></div>
+  `;
+
+  dom.dropChoices.innerHTML = loadout
+    .map((equippedGun, index) => {
+      const equippedStats = equippedGun ? getEffectiveGunStats(equippedGun, loadout) : null;
+      const delta = getCandidateLoadoutDpsDelta(index, state.activeDrop, loadout, baselineDps);
+      const deltaClass = delta >= 0 ? "good" : "bad";
+      const isRecommended = hasPositiveRecommendation && recommendation.slotIndex === index;
+      const candidateLoadout = loadout.slice();
+      candidateLoadout[index] = createGunInstance(state.activeDrop.gunId, state.activeDrop.tier ?? 0);
+      const candidateContext = getLoadoutContext(candidateLoadout);
+      const candidateTypeCount = candidateContext.typeCounts[gun.typeKey] ?? 1;
+
+      return `
+        <article class="drop-choice ${isRecommended ? "recommended" : ""}">
+          <header>
+            <h4>슬롯 ${index + 1}</h4>
+            <span class="badge">${equippedGun ? GUN_BY_ID[equippedGun.gunId].name : "빈 슬롯"}</span>
+          </header>
+          <div class="badge-cluster gun-badge-row">
+            ${equippedGun ? buildRarityBadgeMarkup(equippedGun.tier) : '<span class="badge">빈 슬롯</span>'}
+            ${equippedGun ? buildWeaponTypeBadgeMarkup(GUN_BY_ID[equippedGun.gunId].typeKey) : ""}
+            ${equippedGun ? buildElementBadgeMarkup(GUN_BY_ID[equippedGun.gunId].elementKey) : ""}
+            ${isRecommended ? '<span class="badge recommend-badge">추천 슬롯</span>' : ""}
+          </div>
+          <div class="muted">
+            ${
+              equippedStats
+                ? `현재 무기 DPS ${formatCompact(equippedStats.dps)} / 총 DPS 변화 <span class="delta ${deltaClass}">${delta >= 0 ? "+" : ""}${formatCompact(delta)}</span>`
+                : `빈 슬롯이라 손실 없이 장착 가능합니다. 총 DPS 변화 <span class="delta ${deltaClass}">+${formatCompact(delta)}</span>`
+            }
+          </div>
+          <div class="gun-effect-line">${getWeaponTypeMeta(gun.typeKey).label} ${candidateTypeCount}정 / 같은 계열 공격력 ${formatRatePercent(getWeaponTypeSynergyBonus(candidateTypeCount))}</div>
+          <button type="button" class="primary-button" data-slot-index="${index}">
+            슬롯 ${index + 1}에 장착
+          </button>
+        </article>
+      `;
+    })
+    .join("");
+}
+
 function addLog(gameState, text) {
   const timestamp = new Date().toLocaleTimeString("ko-KR", {
     hour12: false,
@@ -2430,6 +2872,16 @@ function getGunLogLabel(gunRef) {
 function buildRarityBadgeMarkup(tier) {
   const rarity = getGunRarityMeta(tier);
   return `<span class="badge rarity-badge" style="color: ${rarity.color}; border-color: ${rarity.borderColor}; background: ${rarity.background};">${rarity.shortLabel} ${rarity.name}</span>`;
+}
+
+function buildWeaponTypeBadgeMarkup(typeKey) {
+  const typeMeta = getWeaponTypeMeta(typeKey);
+  return `<span class="badge type-badge">${typeMeta.shortLabel} ${typeMeta.label}</span>`;
+}
+
+function buildElementBadgeMarkup(elementKey) {
+  const elementMeta = getElementMeta(elementKey);
+  return `<span class="badge element-badge" style="color: ${elementMeta.color}; border-color: ${elementMeta.borderColor}; background: ${elementMeta.background};">${elementMeta.shortLabel} ${elementMeta.label}</span>`;
 }
 
 function getRarityCardStyle(tier) {

@@ -588,8 +588,16 @@ button:disabled {
 .upgrade-list,
 .drop-choice-list {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: 12px;
+}
+
+.gun-slot-list {
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+}
+
+.upgrade-list,
+.drop-choice-list {
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
 }
 
 .gun-card,
@@ -632,6 +640,128 @@ button:disabled {
 .drop-gun-card {
   display: grid;
   gap: 8px;
+}
+
+.loadout-overview {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.overview-pill-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.overview-pill {
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.overview-pill span,
+.overview-label,
+.slot-kicker,
+.mini-stat span,
+.gun-meta-line,
+.gun-effect-line {
+  color: var(--muted);
+}
+
+.overview-pill strong {
+  font-size: 1rem;
+}
+
+.overview-row {
+  display: grid;
+  gap: 8px;
+}
+
+.overview-label {
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.overview-chip-row,
+.gun-badge-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.gun-card.compact {
+  gap: 10px;
+}
+
+.gun-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.slot-kicker {
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.gun-dps-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 10px;
+  border-radius: 999px;
+  background: rgba(116, 225, 255, 0.12);
+  border: 1px solid rgba(116, 225, 255, 0.18);
+  color: #9cecff;
+  font: 700 0.78rem var(--mono);
+  white-space: nowrap;
+}
+
+.gun-dps-pill.empty {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.08);
+  color: var(--muted);
+}
+
+.type-badge,
+.synergy-badge {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.mini-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.mini-stat {
+  display: grid;
+  gap: 3px;
+  padding: 10px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.mini-stat strong {
+  font-size: 0.92rem;
+}
+
+.gun-effect-line {
+  font-size: 0.82rem;
 }
 
 .drop-workbench {
@@ -779,6 +909,7 @@ button:disabled {
   .hud-resources,
   .arena-summary,
   .deck-meta,
+  .overview-pill-row,
   .loadout-layout,
   .upgrade-grid,
   .combat-stat-grid,
@@ -804,5 +935,9 @@ button:disabled {
 
   .enemy-portrait {
     width: min(100%, 360px);
+  }
+
+  .gun-card-head {
+    flex-direction: column;
   }
 }
